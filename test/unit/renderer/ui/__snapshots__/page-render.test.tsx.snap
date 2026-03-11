@@ -1,0 +1,39 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`页面渲染测试 快照测试 页面应匹配快照 1`] = `
+<div>
+  <div
+    class="app-container"
+    data-testid="app-container"
+  >
+    <header
+      data-testid="app-header"
+    >
+      <h1>
+        ComfyUI Desktop
+      </h1>
+    </header>
+    <main
+      data-testid="app-main"
+    >
+      <div
+        data-testid="status-panel"
+      >
+        状态面板
+      </div>
+      <div
+        data-testid="control-panel"
+      >
+        控制面板
+      </div>
+    </main>
+    <footer
+      data-testid="app-footer"
+    >
+      <p>
+        版本 3.0.0
+      </p>
+    </footer>
+  </div>
+</div>
+`;

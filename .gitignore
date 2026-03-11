@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+build/
+*.exe
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Coverage reports
+coverage/
+
+# Runtime data
+data/
+
+# Reports
+reports/
+
+# Test results and reports
+test/test-results/
+test-results/
+
+# Archived files (not needed in repo)
+.archived/
+
+# Config (keep structure, ignore content)
+config/*.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# CodeArts 工具目录
+.arts/
+.codeartsdoer/
+
+# Temporary files
+*.tmp
+*.temp
+nul
+test-write.txt
+eslint_errors.txt
+
+# Debug documentation
+*-debug.md
+*-fix.md
+CODE_QUALITY_REPORT.md
+QUALITY-REPORT*.md
+
+# Environment
+.env
+.env.local
+.env.*.local

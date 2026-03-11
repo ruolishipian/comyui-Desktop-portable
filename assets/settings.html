@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ComfyUI 设置</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        color: #fff;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        padding: 20px;
+        height: 100vh;
+        overflow-y: auto;
+      }
+      .container {
+        max-width: 650px;
+        margin: 0 auto;
+      }
+      h2 {
+        color: #6366f1;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      .tab-container {
+        display: flex;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #333;
+        flex-wrap: wrap;
+      }
+      .tab {
+        padding: 10px 20px;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        color: #9ca3af;
+        transition: all 0.3s;
+      }
+      .tab:hover {
+        color: #fff;
+      }
+      .tab.active {
+        border-bottom: 2px solid #6366f1;
+        color: #6366f1;
+      }
+      .tab-content {
+        display: none;
+      }
+      .tab-content.active {
+        display: block;
+      }
+      .form-group {
+        margin: 20px 0;
+        padding: 15px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+      }
+      .form-group h3 {
+        margin-bottom: 15px;
+        color: #a5b4fc;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .form-group h3::before {
+        content: '';
+        width: 3px;
+        height: 14px;
+        background: #6366f1;
+        border-radius: 2px;
+      }
+      .form-item {
+        margin: 12px 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .form-item.block {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      label {
+        flex: 1;
+        font-size: 13px;
+        min-width: 150px;
+      }
+      input[type='text'],
+      input[type='number'],
+      select {
+        flex: 2;
+        padding: 8px 10px;
+        border: 1px solid #374151;
+        border-radius: 4px;
+        background: #1f2937;
+        color: #fff;
+        font-size: 13px;
+        min-width: 0;
+      }
+      input[type='text']:focus,
+      input[type='number']:focus,
+      select:focus {
+        outline: none;
+        border-color: #6366f1;
+      }
+      input[type='text']:disabled,
+      input[type='number']:disabled,
+      select:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      input[type='checkbox'] {
+        width: 18px;
+        height: 18px;
+        accent-color: #6366f1;
+      }
+      .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        background: #6366f1;
+        color: #fff;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.3s;
+      }
+      .btn:hover {
+        background: #4f46e5;
+      }
+      .btn-secondary {
+        background: #4b5563;
+      }
+      .btn-secondary:hover {
+        background: #374151;
+      }
+      .btn-danger {
+        background: #ef4444;
+      }
+      .btn-danger:hover {
+        background: #dc2626;
+      }
+      .tips {
+        color: #6b7280;
+        font-size: 11px;
+        margin-top: 5px;
+        margin-left: 160px;
+      }
+      .form-item.block .tips {
+        margin-left: 0;
+      }
+      .footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid #333;
+      }
+      .select-btn {
+        padding: 6px 12px;
+        font-size: 12px;
+        background: #4b5563;
+        flex: none;
+      }
+      .input-with-btn {
+        display: flex;
+        flex: 2;
+        gap: 8px;
+      }
+      .input-with-btn input {
+        flex: 1;
+      }
+      .running-warning {
+        background: rgba(245, 158, 11, 0.2);
+        border: 1px solid #f59e0b;
+        border-radius: 6px;
+        padding: 10px;
+        margin-bottom: 15px;
+        font-size: 12px;
+        color: #fcd34d;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>ComfyUI 设置</h2>
+
+      <div class="running-warning" id="running-warning">⚠️ ComfyUI 正在运行，部分设置需要重启后生效</div>
+
+      <div class="tab-container">
+        <div class="tab active" onclick="switchTab('server')">服务器设置</div>
+        <div class="tab" onclick="switchTab('logs')">日志设置</div>
+        <div class="tab" onclick="switchTab('ui')">界面设置</div>
+        <div class="tab" onclick="switchTab('advanced')">高级设置</div>
+      </div>
+
+      <!-- 服务器设置 -->
+      <div class="tab-content active" id="server-tab">
+        <div class="form-group">
+          <h3>基础设置</h3>
+          <div class="form-item">
+            <label>端口号：</label>
+            <input type="number" id="port" min="1" max="65535" placeholder="留空则自动选择可用端口" />
+          </div>
+          <div class="tips">可通过环境变量 COMFYUI_PORT 设置</div>
+
+          <div class="form-item">
+            <label>自动启动：</label>
+            <input type="checkbox" id="autoStart" />
+          </div>
+          <div class="tips">应用启动时自动启动ComfyUI</div>
+
+          <div class="form-item">
+            <label>崩溃自动重启：</label>
+            <input type="checkbox" id="autoRestart" />
+          </div>
+          <div class="tips">ComfyUI进程意外退出时自动重启（最多3次）</div>
+
+          <div class="form-item">
+            <label>启动超时（秒）：</label>
+            <input type="number" id="timeout" min="5" max="60" placeholder="留空则不限制超时" />
+          </div>
+          <div class="tips">可通过环境变量 COMFYUI_TIMEOUT 设置（单位：毫秒）</div>
+        </div>
+
+        <div class="form-group">
+          <h3>运行模式</h3>
+          <div class="form-item">
+            <label>强制CPU模式：</label>
+            <input type="checkbox" id="cpuMode" />
+          </div>
+          <div class="tips">忽略显卡，强制使用CPU运行</div>
+
+          <div class="form-item">
+            <label>允许局域网访问：</label>
+            <input type="checkbox" id="listenAll" />
+          </div>
+          <div class="tips">监听0.0.0.0，允许其他设备访问</div>
+
+          <div class="form-item">
+            <label>禁用CUDA：</label>
+            <input type="checkbox" id="disableCUDA" />
+          </div>
+          <div class="tips">禁用NVIDIA CUDA加速</div>
+
+          <div class="form-item">
+            <label>禁用IPEX：</label>
+            <input type="checkbox" id="disableIPEX" />
+          </div>
+          <div class="tips">禁用Intel IPEX优化</div>
+        </div>
+
+        <div class="form-group">
+          <h3>自定义目录</h3>
+          <div class="form-item">
+            <label>模型目录：</label>
+            <div class="input-with-btn">
+              <input type="text" id="modelDir" placeholder="留空使用默认目录" />
+              <button class="btn select-btn" onclick="selectDirectory('modelDir', '选择模型目录')">选择</button>
+            </div>
+          </div>
+          <div class="tips">留空则使用ComfyUI默认目录</div>
+
+          <div class="form-item">
+            <label>输出目录：</label>
+            <div class="input-with-btn">
+              <input type="text" id="outputDir" placeholder="留空使用默认目录" />
+              <button class="btn select-btn" onclick="selectDirectory('outputDir', '选择输出目录')">选择</button>
+            </div>
+          </div>
+          <div class="tips">留空则使用ComfyUI默认目录</div>
+        </div>
+
+        <div class="form-group">
+          <h3>自定义启动参数</h3>
+          <div class="form-item block">
+            <label style="margin-bottom: 8px">启动参数：</label>
+            <input type="text" id="customArgs" placeholder="如：--cpu --listen 0.0.0.0" style="width: 100%" />
+          </div>
+          <div class="tips">输入ComfyUI支持的启动参数，空格分隔</div>
+        </div>
+      </div>
+
+      <!-- 日志设置 -->
+      <div class="tab-content" id="logs-tab">
+        <div class="form-group">
+          <h3>基础设置</h3>
+          <div class="form-item">
+            <label>启用日志：</label>
+            <input type="checkbox" id="logEnable" />
+          </div>
+          <div class="tips">关闭后将不再记录日志</div>
+
+          <div class="form-item">
+            <label>实时日志：</label>
+            <input type="checkbox" id="logRealtime" />
+          </div>
+          <div class="tips">日志窗口实时显示输出</div>
+
+          <div class="form-item">
+            <label>日志级别：</label>
+            <select id="logLevel">
+              <option value="error">仅错误</option>
+              <option value="warn">错误+警告</option>
+              <option value="info">全部（默认）</option>
+            </select>
+          </div>
+          <div class="tips">选择要记录的日志级别</div>
+        </div>
+
+        <div class="form-group">
+          <h3>日志文件</h3>
+          <div class="form-item">
+            <label>单文件最大大小（MB）：</label>
+            <input type="number" id="logMaxSize" min="1" max="100" placeholder="留空则不限制大小" />
+          </div>
+          <div class="tips">可通过环境变量 COMFYUI_LOG_MAX_SIZE 设置（单位：字节）</div>
+
+          <div class="form-item">
+            <label>日志保留天数：</label>
+            <input type="number" id="logKeepDays" min="1" max="30" placeholder="留空则不自动删除" />
+          </div>
+          <div class="tips">可通过环境变量 COMFYUI_LOG_KEEP_DAYS 设置</div>
+
+          <div class="form-item">
+            <label>输出节流（毫秒）：</label>
+            <input type="number" id="stdoutThrottle" min="0" max="1000" placeholder="留空则不节流" />
+          </div>
+          <div class="tips">可通过环境变量 COMFYUI_STDOUT_THROTTLE 设置</div>
+        </div>
+      </div>
+
+      <!-- 界面设置 -->
+      <div class="tab-content" id="ui-tab">
+        <div class="form-group">
+          <h3>窗口设置</h3>
+          <div class="form-item">
+            <label>关闭窗口时最小化到托盘：</label>
+            <input type="checkbox" id="minimizeToTray" />
+          </div>
+          <div class="tips">关闭窗口时不退出应用，仅最小化到托盘</div>
+        </div>
+      </div>
+
+      <!-- 高级设置 -->
+      <div class="tab-content" id="advanced-tab">
+        <div class="form-group">
+          <h3>高级选项</h3>
+          <div class="form-item">
+            <label>单实例运行：</label>
+            <input type="checkbox" id="singleInstance" />
+          </div>
+          <div class="tips">禁止同时运行多个ComfyUI实例</div>
+        </div>
+
+        <div class="form-group">
+          <h3>危险操作</h3>
+          <div class="form-item block">
+            <button class="btn btn-danger" onclick="resetConfig()">重置所有配置</button>
+          </div>
+          <div class="tips">将清除所有设置，恢复到初始状态（需重启）</div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <button class="btn btn-secondary" onclick="closeWindow()">取消</button>
+        <button class="btn" onclick="saveSettings()">保存设置</button>
+      </div>
+    </div>
+
+    <script>
+      let config = {};
+      let currentStatus = 'stopped';
+
+      // 错误处理
+      window.addEventListener('error', (e) => {
+        console.error('Settings page error:', e.error);
+      });
+
+      window.addEventListener('unhandledrejection', (e) => {
+        console.error('Unhandled promise rejection:', e.reason);
+      });
+
+      // 初始化
+      window.addEventListener('DOMContentLoaded', async () => {
+        try {
+          config = await window.comfyuiDesktop.getConfig();
+          loadSettings();
+
+          // 监听状态更新
+          if (window.electronAPI) {
+            window.electronAPI.on('statusUpdate', (event, data) => {
+              currentStatus = data.status;
+              updateDisabledState();
+            });
+          }
+        } catch (err) {
+          console.error('Failed to initialize settings:', err);
+          document.body.innerHTML = '<div style="color: red; padding: 20px;">加载设置失败: ' + err.message + '</div>';
+        }
+      });
+
+      // 更新禁用状态
+      function updateDisabledState() {
+        const running = currentStatus === 'running';
+        const warning = document.getElementById('running-warning');
+
+        if (running) {
+          warning.style.display = 'block';
+        } else {
+          warning.style.display = 'none';
+        }
+
+        // 禁用正在运行时无法修改的设置
+        document.getElementById('port').disabled = running;
+        document.getElementById('cpuMode').disabled = running;
+        document.getElementById('listenAll').disabled = running;
+        document.getElementById('disableCUDA').disabled = running;
+        document.getElementById('disableIPEX').disabled = running;
+        document.getElementById('modelDir').disabled = running;
+        document.getElementById('outputDir').disabled = running;
+      }
+
+      // 切换标签
+      function switchTab(tabId) {
+        document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        document.querySelector(`.tab[onclick="switchTab('${tabId}')"]`).classList.add('active');
+        document.getElementById(`${tabId}-tab`).classList.add('active');
+      }
+
+      // 加载设置
+      function loadSettings() {
+        // 服务器设置
+        document.getElementById('port').value = config.server?.port || '';
+        document.getElementById('autoStart').checked = config.server?.autoStart === true;
+        document.getElementById('autoRestart').checked = config.server?.autoRestart === true;
+        document.getElementById('timeout').value = config.server?.timeout ? config.server.timeout / 1000 : '';
+        document.getElementById('cpuMode').checked = config.server?.cpuMode === true;
+        document.getElementById('listenAll').checked = config.server?.listenAll === true;
+        document.getElementById('disableCUDA').checked = config.server?.disableCUDA === true;
+        document.getElementById('disableIPEX').checked = config.server?.disableIPEX === true;
+        document.getElementById('modelDir').value = config.server?.modelDir || '';
+        document.getElementById('outputDir').value = config.server?.outputDir || '';
+        document.getElementById('customArgs').value = config.server?.customArgs || '';
+
+        // 日志设置（默认启用日志和实时日志）
+        document.getElementById('logEnable').checked = config.logs?.enable !== false;
+        document.getElementById('logRealtime').checked = config.logs?.realtime !== false;
+        document.getElementById('logLevel').value = config.logs?.level || '';
+        document.getElementById('logMaxSize').value = config.logs?.maxSize ? config.logs.maxSize / 1024 / 1024 : '';
+        document.getElementById('logKeepDays').value = config.logs?.keepDays || '';
+        document.getElementById('stdoutThrottle').value = config.advanced?.stdoutThrottle || '';
+
+        // 界面设置
+        document.getElementById('minimizeToTray').checked = config.tray?.minimizeToTray === true;
+
+        // 高级设置（默认启用单实例）
+        document.getElementById('singleInstance').checked = config.advanced?.singleInstance !== false;
+      }
+
+      // 保存设置
+      async function saveSettings() {
+        // 收集设置（只保存用户实际输入的值）
+        const newConfig = {
+          server: {
+            port: document.getElementById('port').value ? parseInt(document.getElementById('port').value) : undefined,
+            autoStart: document.getElementById('autoStart').checked,
+            autoRestart: document.getElementById('autoRestart').checked,
+            timeout: document.getElementById('timeout').value ? parseInt(document.getElementById('timeout').value) * 1000 : undefined,
+            cpuMode: document.getElementById('cpuMode').checked,
+            listenAll: document.getElementById('listenAll').checked,
+            disableCUDA: document.getElementById('disableCUDA').checked,
+            disableIPEX: document.getElementById('disableIPEX').checked,
+            modelDir: document.getElementById('modelDir').value || undefined,
+            outputDir: document.getElementById('outputDir').value || undefined,
+            customArgs: document.getElementById('customArgs').value || undefined
+          },
+          logs: {
+            enable: document.getElementById('logEnable').checked,
+            realtime: document.getElementById('logRealtime').checked,
+            level: document.getElementById('logLevel').value || undefined,
+            maxSize: document.getElementById('logMaxSize').value ? parseInt(document.getElementById('logMaxSize').value) * 1024 * 1024 : undefined,
+            keepDays: document.getElementById('logKeepDays').value ? parseInt(document.getElementById('logKeepDays').value) : undefined
+          },
+          tray: {
+            minimizeToTray: document.getElementById('minimizeToTray').checked
+          },
+          advanced: {
+            singleInstance: document.getElementById('singleInstance').checked,
+            stdoutThrottle: document.getElementById('stdoutThrottle').value ? parseInt(document.getElementById('stdoutThrottle').value) : undefined
+          }
+        };
+
+        // 保存设置
+        for (const [key, value] of Object.entries(newConfig)) {
+          await window.comfyuiDesktop.updateConfig(key, value);
+        }
+
+        // 提示
+        if (currentStatus === 'running') {
+          alert('设置已保存，部分设置需要重启ComfyUI后生效');
+        } else {
+          alert('设置已保存');
+        }
+
+        closeWindow();
+      }
+
+      // 选择目录
+      async function selectDirectory(inputId, title) {
+        const path = await window.comfyuiDesktop.selectDirectory(title);
+        if (path) {
+          document.getElementById(inputId).value = path;
+        }
+      }
+
+      // 重置配置
+      // 关闭窗口
+      async function closeWindow() {
+        try {
+          await window.comfyuiDesktop.closeWindow();
+        } catch (e) {
+          window.close();
+        }
+      }
+
+      function closeWindowFallback() {
+        window.close();
+      }
+
+      async function resetConfig() {
+        if (confirm('确定要重置所有配置吗？这将清除所有设置并重启应用！')) {
+          await window.comfyuiDesktop.resetConfig();
+        }
+      }
+    </script>
+  </body>
+</html>

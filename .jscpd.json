@@ -1,0 +1,10 @@
+{
+  "threshold": 5,
+  "reporters": ["html", "console"],
+  "ignore": ["**/node_modules/**", "**/dist/**", "**/assets/**", "**/*.config.js", "**/*.d.ts"],
+  "format": ["typescript"],
+  "minLines": 5,
+  "minTokens": 50,
+  "absolutePathToReport": "./reports/jscpd",
+  "output": "./reports/jscpd"
+}

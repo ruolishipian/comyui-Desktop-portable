@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ComfyUI - 错误</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        color: #fff;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+      }
+      .container {
+        text-align: center;
+        padding: 40px;
+        max-width: 500px;
+      }
+      .error-icon {
+        font-size: 64px;
+        color: #ef4444;
+        margin-bottom: 20px;
+      }
+      .title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #ef4444;
+        margin-bottom: 15px;
+      }
+      .message {
+        font-size: 14px;
+        color: #9ca3af;
+        line-height: 1.6;
+        margin-bottom: 30px;
+      }
+      .btn {
+        padding: 12px 30px;
+        border: none;
+        border-radius: 8px;
+        background: #6366f1;
+        color: #fff;
+        font-size: 14px;
+        cursor: pointer;
+        margin: 5px;
+        transition: background 0.3s;
+      }
+      .btn:hover {
+        background: #4f46e5;
+      }
+      .btn-secondary {
+        background: #4b5563;
+      }
+      .btn-secondary:hover {
+        background: #374151;
+      }
+      .tips {
+        font-size: 12px;
+        color: #6b7280;
+        margin-top: 30px;
+        padding: 15px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="error-icon">⚠️</div>
+      <div class="title">启动失败</div>
+      <div class="message">
+        ComfyUI 服务启动失败，可能是以下原因：<br />
+        1. Python 路径配置错误<br />
+        2. ComfyUI 路径配置错误<br />
+        3. 端口被占用<br />
+        4. 依赖包缺失
+      </div>
+      <div>
+        <button class="btn" onclick="retryStart()">重试启动</button>
+        <button class="btn btn-secondary" onclick="openSettings()">打开设置</button>
+        <button class="btn btn-secondary" onclick="openLogs()">查看日志</button>
+        <button class="btn btn-secondary" onclick="exitApp()" style="background: #ef4444;">退出应用</button>
+      </div>
+      <div class="tips">提示：如果问题持续存在，请检查日志文件获取详细错误信息。</div>
+    </div>
+
+    <script>
+      async function retryStart() {
+        if (window.comfyuiDesktop) {
+          await window.comfyuiDesktop.startComfyui();
+        }
+      }
+
+      async function openSettings() {
+        if (window.comfyuiDesktop) {
+          await window.comfyuiDesktop.openSettings();
+        }
+      }
+
+      async function openLogs() {
+        if (window.comfyuiDesktop) {
+          await window.comfyuiDesktop.openLogs();
+        }
+      }
+
+      function exitApp() {
+        if (window.comfyuiDesktop) {
+          window.comfyuiDesktop.quitApp();
+        }
+      }
+
+      // 监听状态更新
+      if (window.electronAPI) {
+        window.electronAPI.on('statusUpdate', (_, data) => {
+          if (data.status === 'running') {
+            // 状态恢复，页面会被主窗口替换
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

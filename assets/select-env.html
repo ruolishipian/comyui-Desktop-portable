@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ComfyUI 环境配置</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        color: #fff;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        padding: 30px;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      .container {
+        max-width: 550px;
+        margin: 0 auto;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+      h2 {
+        color: #6366f1;
+        margin-bottom: 10px;
+        text-align: center;
+      }
+      .subtitle {
+        color: #9ca3af;
+        font-size: 13px;
+        text-align: center;
+        margin-bottom: 30px;
+      }
+      .form-group {
+        margin-bottom: 25px;
+        padding: 20px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+      }
+      .form-group h3 {
+        color: #a5b4fc;
+        font-size: 14px;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .form-group h3::before {
+        content: '';
+        width: 4px;
+        height: 16px;
+        background: #6366f1;
+        border-radius: 2px;
+      }
+      .form-item {
+        margin: 12px 0;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        color: #d1d5db;
+        margin-bottom: 8px;
+      }
+      .input-group {
+        display: flex;
+        gap: 10px;
+      }
+      input[type='text'] {
+        flex: 1;
+        padding: 10px 12px;
+        border: 1px solid #374151;
+        border-radius: 6px;
+        background: #1f2937;
+        color: #fff;
+        font-size: 13px;
+      }
+      input[type='text']:focus {
+        outline: none;
+        border-color: #6366f1;
+      }
+      .btn {
+        padding: 10px 16px;
+        border: none;
+        border-radius: 6px;
+        background: #4b5563;
+        color: #fff;
+        font-size: 13px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.3s;
+      }
+      .btn:hover {
+        background: #374151;
+      }
+      .btn-primary {
+        background: #6366f1;
+      }
+      .btn-primary:hover {
+        background: #4f46e5;
+      }
+      .tips {
+        font-size: 11px;
+        color: #6b7280;
+        margin-top: 8px;
+      }
+      .footer {
+        display: flex;
+        justify-content: center;
+        gap: 15px;
+        margin-top: auto;
+        padding-top: 20px;
+      }
+      .footer .btn {
+        padding: 12px 40px;
+        font-size: 14px;
+      }
+      .status {
+        text-align: center;
+        padding: 10px;
+        border-radius: 6px;
+        margin-top: 15px;
+        font-size: 12px;
+        display: none;
+      }
+      .status.error {
+        background: rgba(239, 68, 68, 0.2);
+        color: #fca5a5;
+        display: block;
+      }
+      .status.success {
+        background: rgba(34, 197, 94, 0.2);
+        color: #86efac;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>ComfyUI 环境配置</h2>
+      <div class="subtitle">请选择 ComfyUI 便携包路径和 Python 环境</div>
+
+      <div class="form-group">
+        <h3>ComfyUI 便携包</h3>
+        <div class="form-item">
+          <label>ComfyUI 根目录：</label>
+          <div class="input-group">
+            <input type="text" id="comfyuiPath" placeholder="选择 ComfyUI 便携包根目录" readonly />
+            <button class="btn" onclick="selectComfyuiPath()">选择</button>
+          </div>
+          <div class="tips">选择包含 main.py 的 ComfyUI 根目录</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <h3>Python 环境</h3>
+        <div class="form-item">
+          <label>Python 可执行文件：</label>
+          <div class="input-group">
+            <input type="text" id="pythonPath" placeholder="选择 Python 可执行文件" readonly />
+            <button class="btn" onclick="selectPythonPath()">选择</button>
+          </div>
+          <div class="tips">选择便携包内的 python.exe 或系统 Python</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <h3>环境启动参数（可选）</h3>
+        <div class="form-item">
+          <label>Python 环境参数：</label>
+          <div class="input-group">
+            <input type="text" id="envArgs" placeholder="如：-u -W ignore" />
+          </div>
+          <div class="tips">设置 Python 解释器的启动参数，如 -u（无缓冲输出）、-W ignore（忽略警告）等</div>
+        </div>
+        <div class="form-item">
+          <label>环境变量：</label>
+          <textarea id="envVars" style="width: 100%; min-height: 80px; padding: 10px 12px; border: 1px solid #374151; border-radius: 6px; background: #1f2937; color: #fff; font-size: 13px; font-family: 'Consolas', 'Monaco', monospace; resize: vertical;" placeholder="PYTHONIOENCODING=utf-8
+PYTHONLEGACYWINDOWSSTDIO=utf-8
+CUDA_VISIBLE_DEVICES=0"></textarea>
+          <div class="tips">每行一个环境变量，格式：变量名=值<br/>例如：PYTHONIOENCODING=utf-8（设置 Python 输出编码）</div>
+        </div>
+      </div>
+
+      <div class="status" id="status"></div>
+
+      <div class="footer">
+        <button class="btn btn-primary" onclick="saveAndContinue()">保存并继续</button>
+      </div>
+    </div>
+
+    <script>
+      // 调试：检查 API 是否可用
+      console.log('[Debug] window.comfyuiDesktop:', window.comfyuiDesktop);
+      console.log('[Debug] window.comfyuiDesktop?.selectComfyuiPath:', window.comfyuiDesktop?.selectComfyuiPath);
+      console.log('[Debug] window.comfyuiDesktop?.selectPythonPath:', window.comfyuiDesktop?.selectPythonPath);
+
+      // 检查 API 是否可用
+      if (!window.comfyuiDesktop) {
+        console.error('comfyuiDesktop API 未定义！preload.js 可能未正确加载');
+        document.addEventListener('DOMContentLoaded', () => {
+          const statusEl = document.getElementById('status');
+          statusEl.className = 'status error';
+          statusEl.textContent = '错误：API 未加载，请重启应用';
+          statusEl.style.display = 'block';
+        });
+      } else {
+        console.log('[Debug] API 已加载，所有方法可用');
+      }
+
+      // 选择 ComfyUI 路径
+      async function selectComfyuiPath() {
+        console.log('[Debug] selectComfyuiPath 被调用');
+        try {
+          if (!window.comfyuiDesktop) {
+            throw new Error('API 未定义');
+          }
+          console.log('[Debug] 调用 window.comfyuiDesktop.selectComfyuiPath()');
+          const path = await window.comfyuiDesktop.selectComfyuiPath();
+          console.log('[Debug] 返回的路径:', path);
+          if (path) {
+            document.getElementById('comfyuiPath').value = path;
+            validatePaths();
+          }
+        } catch (err) {
+          console.error('选择 ComfyUI 路径失败：', err);
+          const statusEl = document.getElementById('status');
+          statusEl.className = 'status error';
+          statusEl.textContent = '选择路径失败：' + err.message;
+        }
+      }
+
+      // 选择 Python 路径
+      async function selectPythonPath() {
+        console.log('[Debug] selectPythonPath 被调用');
+        try {
+          if (!window.comfyuiDesktop) {
+            throw new Error('API 未定义');
+          }
+          console.log('[Debug] 调用 window.comfyuiDesktop.selectPythonPath()');
+          const path = await window.comfyuiDesktop.selectPythonPath();
+          console.log('[Debug] 返回的路径:', path);
+          if (path) {
+            document.getElementById('pythonPath').value = path;
+            validatePaths();
+          }
+        } catch (err) {
+          console.error('选择 Python 路径失败：', err);
+          const statusEl = document.getElementById('status');
+          statusEl.className = 'status error';
+          statusEl.textContent = '选择路径失败：' + err.message;
+        }
+      }
+
+      // 验证路径
+      function validatePaths() {
+        const comfyuiPath = document.getElementById('comfyuiPath').value;
+        const pythonPath = document.getElementById('pythonPath').value;
+        const statusEl = document.getElementById('status');
+
+        if (comfyuiPath && pythonPath) {
+          statusEl.className = 'status success';
+          statusEl.textContent = '路径配置完成，点击"保存并继续"开始使用';
+        } else {
+          statusEl.style.display = 'none';
+        }
+      }
+
+      // 保存并继续
+      async function saveAndContinue() {
+        const comfyuiPath = document.getElementById('comfyuiPath').value;
+        const pythonPath = document.getElementById('pythonPath').value;
+        const envArgs = document.getElementById('envArgs').value;
+        const envVars = document.getElementById('envVars').value;
+        const statusEl = document.getElementById('status');
+
+        if (!comfyuiPath) {
+          statusEl.className = 'status error';
+          statusEl.textContent = '请选择 ComfyUI 路径';
+          return;
+        }
+
+        if (!pythonPath) {
+          statusEl.className = 'status error';
+          statusEl.textContent = '请选择 Python 路径';
+          return;
+        }
+
+        try {
+          await window.comfyuiDesktop.saveEnvPath({
+            comfyuiPath,
+            pythonPath,
+            envArgs,
+            envVars
+          });
+        } catch (err) {
+          statusEl.className = 'status error';
+          statusEl.textContent = '保存失败：' + err.message;
+        }
+      }
+
+      // 加载已保存的配置
+      async function loadConfig() {
+        try {
+          const config = await window.comfyuiDesktop.getConfig();
+          if (config.comfyuiPath) {
+            document.getElementById('comfyuiPath').value = config.comfyuiPath;
+          }
+          if (config.pythonPath) {
+            document.getElementById('pythonPath').value = config.pythonPath;
+          }
+          if (config.envArgs) {
+            document.getElementById('envArgs').value = config.envArgs;
+          }
+          if (config.envVars) {
+            document.getElementById('envVars').value = config.envVars;
+          }
+          validatePaths();
+        } catch (err) {
+          console.error('加载配置失败：', err);
+        }
+      }
+
+      // 页面加载时初始化
+      window.addEventListener('DOMContentLoaded', loadConfig);
+    </script>
+  </body>
+</html>

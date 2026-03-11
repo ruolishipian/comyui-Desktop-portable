@@ -1,0 +1,55 @@
+{
+  "compilerOptions": {
+    /* 基础选项 */
+    "target": "ES2021",
+    "module": "CommonJS",
+    "lib": ["ES2021", "DOM"],
+    "outDir": "./dist",
+    "removeComments": false,
+    "declaration": false, // 非发布包关闭，加快编译
+    "declarationMap": false,
+    "sourceMap": true,
+    "jsx": "react",
+
+    /* 严格类型检查选项 */
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "useUnknownInCatchVariables": false, // 新手友好，关闭 unknown catch 变量
+    "alwaysStrict": true,
+
+    /* 额外检查（源码严格，测试单独放宽） */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": false,
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false,
+
+    /* 模块解析选项 */
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+
+    /* 路径映射 */
+    "baseUrl": ".",
+    "paths": {
+      "@modules/*": ["src/modules/*"],
+      "@/*": ["src/*"]
+    },
+
+    /* Electron 特定配置 */
+    "types": ["node", "jest", "electron"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "test/**/*.tsx", "test/types/**/*.d.ts"],
+  "exclude": ["node_modules", "dist", "assets", "test/e2e"]
+}
