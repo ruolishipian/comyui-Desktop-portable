@@ -1,67 +1,173 @@
-&nbsp;ComfyUI\_Electron启动器
+# ComfyUI 便携桌面版
 
-<img src="./images/1.png" width="600" alt="ComfyUI启动器界面截图">
+模块化架构的 ComfyUI 便携桌面版， 参考复刻官方功能。
 
-让便携包confyui像Windows程序一样使用。
-
-一款开箱即用的ComfyUI一键启动器，自带日志监控、进程管理、端口自动清理，无需手动配置环境。
-
-适合感觉用浏览器打开confyui麻烦的人，感觉浏览器在查找东西时候打开多个窗口，再找回confyui界面麻烦的。
-这是我用ai生成的，可能有不少问题，有能力又有想法的大佬可以拿去修改玩。
-
-\## 📥 下载
-
-\- 最新版本：\[Releases](https://github.com/ruolishipian/ComfyUI_Electron/releases)
-
-\- 可选包类型：
-
-&nbsp; - 安装包：`ComfyUI启动器 Setup x.x.x.exe`（双击安装）
-
-&nbsp; - 绿色包：`ComfyUI启动器-x.x.x-win.zip`（解压即用）
+第一次安装完成需要手动设置环境变量和启动参数，
+环境变量
+PYTHONIOENCODING=utf-8
+PYTHONUTF8=1
 
 
+启动参数设置通过右键进入
+--lowvram --use-sage-attention
 
-\## 🚀 使用步骤
+## 架构设计
 
-1\. 下载后，安装包双击安装，绿色包解压到任意目录；
+### 模块化结构
 
-2\. 运行`ComfyUI启动器.exe`；
+```
+electron/
+├── main.js                    # 主入口（精简版）
+├── preload.js                 # 预加载脚本
+├── package.json               # 包配置
+├── src/
+│   └── modules/               # 核心模块
+│       ├── index.js           # 模块索引
+│       ├── state.js           # 状态管理
+│       ├── config.js          # 配置管理
+│       ├── logger.js          # 日志管理
+│       ├── environment.js     # 环境检查
+│       ├── process.js         # 进程管理
+│       ├── windows.js         # 窗口管理
+│       ├── tray.js            # 托盘管理
+│       └── ipc.js             # IPC 通信
+├── assets/                    # 静态资源
+│   ├── loading.html
+│   ├── error.html
+│   ├── select-env.html
+│   ├── log.html
+│   └── settings.html
+├── config/                    # 配置目录
+├── logs/                      # 日志目录
+└── scripts/                   # 脚本
+    └── quality-check.js
+```
 
-3\. 首次启动点击「配置中心」，选择Python路径（python.exe）和ComfyUI目录（含main.py）；
+### 模块说明
 
-4\. 点击「启动ComfyUI」，成功后自动加载ComfyUI界面；
+| 模块 | 职责 | 单例导出 |
+|------|------|----------|
+| `state.js` | 应用状态管理，状态变更通知 | `stateManager` |
+| `config.js` | 配置读写，默认值管理 | `configManager` |
+| `logger.js` | 日志记录，轮转，清理 | `logger` |
+| `environment.js` | 启动前环境检查 | `environmentChecker` |
+| `process.js` | ComfyUI 进程生命周期 | `processManager` |
+| `windows.js` | 所有窗口创建和管理 | `windowManager` |
+| `tray.js` | 系统托盘管理 | `trayManager` |
+| `ipc.js` | 主进程与渲染进程通信 | `ipcManager` |
 
-5\. 关闭时自动清理进程和端口，无需手动操作。
+### 模块依赖关系
 
+```
+main.js
+    │
+    ├── configManager (配置)
+    │       └── Store (electron-store)
+    │
+    ├── logger (日志)
+    │       └── configManager
+    │
+    ├── stateManager (状态)
+    │       └── 无依赖
+    │
+    ├── processManager (进程)
+    │       ├── configManager
+    │       ├── stateManager
+    │       ├── environmentChecker
+    │       └── logger
+    │
+    ├── windowManager (窗口)
+    │       ├── configManager
+    │       ├── stateManager
+    │       ├── processManager (延迟加载)
+    │       └── logger
+    │
+    ├── trayManager (托盘)
+    │       ├── configManager
+    │       ├── stateManager
+    │       ├── windowManager
+    │       └── processManager
+    │
+    └── ipcManager (通信)
+            ├── configManager
+            ├── stateManager
+            ├── logger
+            ├── windowManager
+            ├── processManager
+            └── trayManager
+```
 
+## 设计优势
 
-\## ⚙️ 功能特性
+### 1. 单一职责
+每个模块只负责一个功能领域，修改时只需关注对应模块。
 
-\- ✅ 实时日志（区分错误/警告/信息）
+### 2. 依赖注入
+模块间通过 `setDependencies()` 注入依赖，避免循环引用。
 
-\- ✅ 自动清理占用端口的进程
+### 3. 单例模式
+所有管理器都是单例，确保全局唯一实例。
 
-\- ✅ 启动成功后自动加载ComfyUI界面
+### 4. 事件驱动
+状态变更通过监听器模式通知，解耦模块间通信。
 
-\- ✅ 支持代理配置、自定义启动参数
+### 5. 统一导出
+`index.js` 统一导出所有模块，便于引用和管理。
 
-\- ✅ 自动申请管理员权限（解决端口清理权限问题）
+## 快速开始
 
+### 安装依赖
 
+```bash
+cd electron
+npm install
+```
 
-功能优化
-1. 资源分配优化
-优化了启动器的资源使用，将更多GPU资源留给ComfyUI
-添加了手动视图切换功能（日志视图和ComfyUI视图）
-2. 性能优化
-保留了性能参数的用户自定义功能
-移除了自动添加性能参数的逻辑，让用户通过配置界面自行添加
-3. 界面优化
-修复了iframe加载机制
-改进了视图切换逻辑
-添加了加载状态指示和错误处理
+### 运行开发模式
 
-\## 📄 许可证
+```bash
+npm start
+```
 
-本项目基于MIT协议开源，详见\[LICENSE](LICENSE)文件。
+### 打包应用
 
+```bash
+npm run package
+```
+
+### 质量检查
+
+```bash
+npm run quality-check
+```
+
+## 扩展指南
+
+### 添加新功能
+
+1. 在 `src/modules/` 创建新模块
+2. 在 `index.js` 中导出
+3. 在 `main.js` 中初始化和设置依赖
+
+### 添加新窗口
+
+1. 在 `assets/` 创建 HTML 文件
+2. 在 `windows.js` 添加创建方法
+3. 在 `ipc.js` 添加通信接口（如需要）
+
+### 添加新配置项
+
+1. 在 `config.js` 的 `DEFAULT_CONFIG` 添加默认值
+2. 在 `settings.html` 添加 UI 控件
+3. 在需要的地方通过 `configManager.get()` 读取
+
+## 图标文件
+
+请自行准备以下图标文件并放入 `assets/` 目录：
+
+- `icon.ico` - 应用主图标（建议 256x256）
+- `tray.ico` - 系统托盘图标（建议 32x32）
+
+## 许可证
+
+MIT License

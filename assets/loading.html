@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ComfyUI - 加载中</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        color: #fff;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+      }
+      .container {
+        text-align: center;
+        padding: 40px;
+      }
+      .logo {
+        font-size: 48px;
+        font-weight: bold;
+        color: #6366f1;
+        margin-bottom: 20px;
+        text-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
+      }
+      .spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid rgba(99, 102, 241, 0.3);
+        border-top-color: #6366f1;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 30px auto;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .status {
+        font-size: 16px;
+        color: #9ca3af;
+        margin-top: 20px;
+      }
+      .tips {
+        font-size: 12px;
+        color: #6b7280;
+        margin-top: 30px;
+        max-width: 400px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="logo">ComfyUI</div>
+      <div class="spinner"></div>
+      <div class="status" id="status">加载中...</div>
+      <div class="tips">
+        首次启动可能需要较长时间，请耐心等待。<br />
+        如果长时间无响应，请检查日志或重启应用。
+      </div>
+    </div>
+
+    <script>
+      // 监听状态更新
+      if (window.electronAPI) {
+        window.electronAPI.on('statusUpdate', (_, data) => {
+          const statusEl = document.getElementById('status');
+          const statusMap = {
+            stopped: 'ComfyUI 已停止 - 请手动启动',
+            starting: '正在启动 ComfyUI 服务...',
+            running: 'ComfyUI 运行中',
+            failed: 'ComfyUI 启动失败',
+            restarting: 'ComfyUI 正在重启...',
+            stopping: 'ComfyUI 正在停止...'
+          };
+          statusEl.textContent = statusMap[data.status] || '状态未知';
+        });
+
+        // 页面加载完成后，请求当前状态
+        window.addEventListener('DOMContentLoaded', () => {
+          // 发送渲染进程就绪信号
+          if (window.comfyuiDesktop && window.comfyuiDesktop.rendererReady) {
+            window.comfyuiDesktop.rendererReady();
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
