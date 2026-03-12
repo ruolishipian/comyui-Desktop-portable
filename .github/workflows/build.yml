@@ -34,39 +34,9 @@ jobs:
         shell: pwsh
         continue-on-error: true
 
-      - name: 🧹 注入清理脚本（保留中英文，删除其他语言包）
-        run: |
-          $script = @'
-          const fs = require('fs');
-          const path = require('path');
-          
-          function cleanLocales(appPath) {
-            const localesPath = path.join(appPath, 'locales');
-            if (fs.existsSync(localesPath)) {
-              fs.readdirSync(localesPath).forEach(file => {
-                // 只保留 zh-CN (简体中文) 和 en-US (英文)
-                if (!file.includes('zh-CN') && !file.includes('en-US')) {
-                  try {
-                    fs.unlinkSync(path.join(localesPath, file));
-                    console.log('🗑️ 删除冗余语言包:', file);
-                  } catch (e) {}
-                }
-              });
-            }
-          }
-          
-          exports.default = async (context) => {
-            console.log('🧹 开始清理非核心文件...');
-            cleanLocales(context.appOutDir);
-          }
-          '@
-          Set-Content -Path "clean-locales-plugin.js" -Value $script
-        shell: pwsh
-
       - name: 打包 (仅安装包+压缩包)
         run: |
-          npx electron-builder --win --x64 --publish never `
-            --config.afterPack=./clean-locales-plugin.js
+          npx electron-builder --win --x64 --publish never
         shell: pwsh
 
       - name: 上传到 Releases
