@@ -261,24 +261,12 @@ export class ConfigManager {
 
       // 检测 ComfyUI
       if (comfyuiPath === undefined || comfyuiPath === '') {
-        const possibleComfyUIPaths = [
-          // 便携包内路径（优先）
-          path.join(appPath, 'ComfyUI'),
-          path.join(appPath, 'comfyui'),
-          // 兼容旧版便携包结构（ComfyUI 在父目录）
-          path.join(appPath, '..', 'ComfyUI'),
-          path.join(appPath, '..', 'comfyui')
-        ];
-
-        for (const possiblePath of possibleComfyUIPaths) {
-          if (fsSync.existsSync(possiblePath)) {
-            const mainPyPath = path.join(possiblePath, 'main.py');
-            if (fsSync.existsSync(mainPyPath)) {
-              this.set('comfyuiPath', possiblePath);
-              console.log(`[Config] 自动检测到 ComfyUI: ${possiblePath}`);
-              break;
-            }
-          }
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { detectComfyUIPath } = require('./path-detector') as { detectComfyUIPath: (appPath: string) => string | null };
+        const detectedPath = detectComfyUIPath(appPath);
+        if (detectedPath) {
+          this.set('comfyuiPath', detectedPath);
+          console.log(`[Config] 自动检测到 ComfyUI: ${detectedPath}`);
         }
       }
 

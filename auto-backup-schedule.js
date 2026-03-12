@@ -10,7 +10,7 @@ const path = require('path');
 
 // 配置
 const CONFIG = {
-  interval: 30 * 60 * 1000, // 30分钟（单位：毫秒）
+  interval: 30 * 60 * 1000 // 30分钟（单位：毫秒）
   // interval: 10 * 60 * 1000, // 10分钟
   // interval: 60 * 60 * 1000, // 1小时
 };
@@ -37,7 +37,7 @@ function runBackup() {
     stdio: 'inherit'
   });
 
-  backup.on('close', (code) => {
+  backup.on('close', code => {
     if (code === 0) {
       log('✅ 备份完成', 'green');
     } else {
@@ -45,7 +45,7 @@ function runBackup() {
     }
   });
 
-  backup.on('error', (err) => {
+  backup.on('error', err => {
     log(`❌ 备份脚本错误: ${err.message}`, 'yellow');
   });
 }
@@ -80,7 +80,7 @@ process.on('SIGTERM', () => {
 });
 
 // 错误处理
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', error => {
   log(`❌ 发生错误: ${error.message}`, 'yellow');
 });
 

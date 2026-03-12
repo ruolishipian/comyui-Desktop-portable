@@ -135,12 +135,12 @@ function main() {
 }
 
 // 错误处理
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', error => {
   log(`\n❌ 发生错误: ${error.message}`, 'red');
   process.exit(1);
 });
 
-process.on('unhandledRejection', (reason) => {
+process.on('unhandledRejection', reason => {
   log(`\n❌ 未处理的 Promise 拒绝: ${reason}`, 'red');
   process.exit(1);
 });
