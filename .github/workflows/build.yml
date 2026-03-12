@@ -38,6 +38,14 @@ jobs:
         run: npm run build
         shell: pwsh
 
+      - name: 检查构建产物
+        run: |
+          Write-Host "检查 dist 目录结构:"
+          Get-ChildItem -Path dist -Recurse -Depth 2 | Select-Object FullName
+          Write-Host "`n检查 main.js 是否存在:"
+          Test-Path "dist\src\main.js"
+        shell: pwsh
+
       - name: 打包 (仅安装包+压缩包)
         run: |
           npx electron-builder --win --x64 --publish never
