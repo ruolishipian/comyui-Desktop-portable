@@ -16,9 +16,10 @@
 **修改内容：**
 
 1. **创建 NSIS 脚本** (`scripts/installer.nsh`)
-   - 安装前：自动备份 `config/`、`logs/`、`data/` 目录到临时目录
-   - 安装后：自动恢复这些目录到安装位置
+   - 安装前：自动备份 `config/portable-config.json` 配置文件到临时目录
+   - 安装后：自动恢复配置文件到安装位置
    - 清理临时备份
+   - **重要修复**：清理旧版本遗留的嵌套目录问题
 
 2. **更新 electron-builder.yml**
    - 添加 `include: "scripts/installer.nsh"` 引用自定义脚本
@@ -26,12 +27,18 @@
 **优点：**
 - ✅ 完全自动化，用户无感知
 - ✅ 保持便携版特性（配置仍在应用目录）
-- ✅ 支持所有类型的配置文件
+- ✅ 只备份关键配置文件，避免目录嵌套问题
 - ✅ 安装过程显示备份和恢复状态
+- ✅ 自动清理旧版本遗留的嵌套目录
 
 **缺点：**
-- ⚠️ 需要额外的临时空间存储备份
+- ⚠️ 需要少量的临时空间存储备份（仅几 KB）
 - ⚠️ 如果安装失败，备份可能不会被清理（但会在系统重启时自动清理临时目录）
+
+**为什么不备份 logs 和 data 目录？**
+- `logs/` 目录可以重新生成，备份无意义
+- `data/` 目录包含大量 Electron 缓存（约 200+ MB），备份会浪费时间和空间
+- 避免目录嵌套问题（旧版本的严重 bug）
 
 ## 使用方法
 
@@ -61,17 +68,20 @@ npm run build:win:installer
 
 ## 备份的文件
 
-安装程序会自动备份以下目录：
-- `config/` - 配置文件（包括 `portable-config.json`）
-- `logs/` - 日志文件
-- `data/` - Electron 缓存和会话数据
+安装程序会自动备份以下文件：
+- `config/portable-config.json` - 用户配置文件（Python 路径、ComfyUI 路径、窗口设置等）
+
+**不再备份的文件：**
+- ~~`logs/`~~ - 日志文件（可重新生成）
+- ~~`data/`~~ - Electron 缓存和会话数据（包含大量缓存，约 200+ MB）
 
 ## 注意事项
 
 1. **首次安装**：没有配置文件，不会执行备份恢复操作
-2. **覆盖安装**：自动备份恢复，配置不会丢失
+2. **覆盖安装**：自动备份恢复配置文件，用户设置不会丢失
 3. **卸载**：配置文件不会被删除（`deleteAppDataOnUninstall: false`）
 4. **临时目录**：备份存储在 Windows 临时目录（`%TEMP%\ComfyUI-Desktop-Backup`）
+5. **嵌套目录清理**：新版本会自动清理旧版本遗留的嵌套目录问题
 
 ## 测试建议
 
@@ -87,12 +97,22 @@ npm run build:win:installer
 ```nsis
 ; 安装前（customInit）
 1. 创建临时备份目录
-2. 复制 config、logs、data 到临时目录
+2. 只复制 config/portable-config.json 到临时目录
+3. 不再备份 logs 和 data 目录（避免嵌套和节省空间）
 
 ; 安装后（customInstall）
-1. 从临时目录恢复 config、logs、data
-2. 删除临时备份目录
+1. 从临时目录恢复 portable-config.json
+2. 清理旧版本遗留的嵌套目录（config/config、logs/logs、data/data）
+3. 删除临时备份目录
 ```
+
+### 已修复的问题
+
+**目录嵌套问题（严重 bug）：**
+- **问题**：旧版本备份整个目录，导致每次覆盖安装都嵌套一层
+- **表现**：`logs/logs/logs/logs/logs/`、`config/config/config/` 等
+- **影响**：浪费磁盘空间（data 目录约 200+ MB），可能导致路径过长错误
+- **修复**：只备份配置文件，不备份整个目录；安装后自动清理嵌套目录
 
 ### 兼容性
 

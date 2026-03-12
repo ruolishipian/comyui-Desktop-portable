@@ -292,8 +292,13 @@ void app
 
 // 应用即将退出 - 优化退出速度
 app.on('before-quit', event => {
-  // 避免重复处理
-  if (global.isQuiting) return;
+  console.log('[Debug] before-quit event triggered, isQuiting:', global.isQuiting);
+
+  // 避免重复处理（但如果已经标记为退出，仍然需要执行退出逻辑）
+  if (global.isQuiting) {
+    console.log('[Debug] Already quiting, but still need to check if we should stop ComfyUI');
+    // 不要直接返回，继续检查是否需要停止 ComfyUI
+  }
 
   // 清空会话日志缓存
   logger.clearSessionLog();
@@ -303,6 +308,7 @@ app.on('before-quit', event => {
     event.preventDefault();
     global.isQuiting = true;
 
+    console.log('[Debug] ComfyUI is running, stopping...');
     logger.info('正在关闭 ComfyUI...');
 
     // 1. 通知前端应用即将关闭
@@ -343,6 +349,9 @@ app.on('before-quit', event => {
   } else {
     global.isQuiting = true;
     logger.info('ComfyUI 便携桌面版开始退出');
+    // 如果 ComfyUI 没有在运行，直接退出
+    windowManager.closeAll();
+    app.exit(0);
   }
 });
 

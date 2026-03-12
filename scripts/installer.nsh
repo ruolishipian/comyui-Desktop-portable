@@ -1,11 +1,11 @@
 ; NSIS 安装脚本 - 备份和恢复配置文件
 ; 此脚本在安装前备份配置文件，安装后恢复
+; 修复：避免目录嵌套问题，只备份关键配置文件
 
 !macro customHeader
   ; 定义配置文件目录
   !define CONFIG_DIR "config"
-  !define LOGS_DIR "logs"
-  !define DATA_DIR "data"
+  !define CONFIG_FILE "portable-config.json"
   !define BACKUP_DIR "$TEMP\ComfyUI-Desktop-Backup"
   !define MAIN_EXE "ComfyUI-Desktop-portable.exe"
 !macroend
@@ -14,24 +14,19 @@
 !macro customInit
   ; 创建备份目录
   CreateDirectory "${BACKUP_DIR}"
+  CreateDirectory "${BACKUP_DIR}\${CONFIG_DIR}"
 
-  ; 备份 config 目录
-  ${If} ${FileExists} "$INSTDIR\${CONFIG_DIR}"
-    CopyFiles "$INSTDIR\${CONFIG_DIR}" "${BACKUP_DIR}\${CONFIG_DIR}"
-    DetailPrint "已备份配置文件到: ${BACKUP_DIR}\${CONFIG_DIR}"
+  ; 只备份配置文件，不备份整个目录（避免嵌套）
+  ${If} ${FileExists} "$INSTDIR\${CONFIG_DIR}\${CONFIG_FILE}"
+    CopyFiles "$INSTDIR\${CONFIG_DIR}\${CONFIG_FILE}" "${BACKUP_DIR}\${CONFIG_DIR}\${CONFIG_FILE}"
+    DetailPrint "已备份配置文件: ${CONFIG_FILE}"
   ${EndIf}
 
-  ; 备份 logs 目录
-  ${If} ${FileExists} "$INSTDIR\${LOGS_DIR}"
-    CopyFiles "$INSTDIR\${LOGS_DIR}" "${BACKUP_DIR}\${LOGS_DIR}"
-    DetailPrint "已备份日志文件到: ${BACKUP_DIR}\${LOGS_DIR}"
-  ${EndIf}
-
-  ; 备份 data 目录
-  ${If} ${FileExists} "$INSTDIR\${DATA_DIR}"
-    CopyFiles "$INSTDIR\${DATA_DIR}" "${BACKUP_DIR}\${DATA_DIR}"
-    DetailPrint "已备份数据文件到: ${BACKUP_DIR}\${DATA_DIR}"
-  ${EndIf}
+  ; 不再备份 logs 和 data 目录
+  ; 原因：
+  ; 1. logs 可以重新生成
+  ; 2. data 包含大量缓存，备份会浪费空间和时间
+  ; 3. 避免目录嵌套问题
 !macroend
 
 ; 安装后恢复配置文件
@@ -44,22 +39,28 @@
     Abort
   ${EndIf}
 
-  ; 恢复 config 目录
-  ${If} ${FileExists} "${BACKUP_DIR}\${CONFIG_DIR}"
-    CopyFiles "${BACKUP_DIR}\${CONFIG_DIR}" "$INSTDIR\${CONFIG_DIR}"
-    DetailPrint "已恢复配置文件"
+  ; 恢复配置文件
+  ${If} ${FileExists} "${BACKUP_DIR}\${CONFIG_DIR}\${CONFIG_FILE}"
+    ; 确保 config 目录存在
+    CreateDirectory "$INSTDIR\${CONFIG_DIR}"
+    CopyFiles "${BACKUP_DIR}\${CONFIG_DIR}\${CONFIG_FILE}" "$INSTDIR\${CONFIG_DIR}\${CONFIG_FILE}"
+    DetailPrint "已恢复配置文件: ${CONFIG_FILE}"
   ${EndIf}
 
-  ; 恢复 logs 目录
-  ${If} ${FileExists} "${BACKUP_DIR}\${LOGS_DIR}"
-    CopyFiles "${BACKUP_DIR}\${LOGS_DIR}" "$INSTDIR\${LOGS_DIR}"
-    DetailPrint "已恢复日志文件"
+  ; 清理可能存在的嵌套目录（修复旧版本遗留问题）
+  ${If} ${FileExists} "$INSTDIR\config\config"
+    DetailPrint "检测到嵌套的 config 目录，正在清理..."
+    RMDir /r "$INSTDIR\config\config"
   ${EndIf}
 
-  ; 恢复 data 目录
-  ${If} ${FileExists} "${BACKUP_DIR}\${DATA_DIR}"
-    CopyFiles "${BACKUP_DIR}\${DATA_DIR}" "$INSTDIR\${DATA_DIR}"
-    DetailPrint "已恢复数据文件"
+  ${If} ${FileExists} "$INSTDIR\logs\logs"
+    DetailPrint "检测到嵌套的 logs 目录，正在清理..."
+    RMDir /r "$INSTDIR\logs\logs"
+  ${EndIf}
+
+  ${If} ${FileExists} "$INSTDIR\data\data"
+    DetailPrint "检测到嵌套的 data 目录，正在清理..."
+    RMDir /r "$INSTDIR\data\data"
   ${EndIf}
 
   ; 清理备份目录

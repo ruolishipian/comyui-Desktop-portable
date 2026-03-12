@@ -262,7 +262,9 @@ export class ConfigManager {
       // 检测 ComfyUI
       if (comfyuiPath === undefined || comfyuiPath === '') {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { detectComfyUIPath } = require('./path-detector') as { detectComfyUIPath: (appPath: string) => string | null };
+        const { detectComfyUIPath } = require('./path-detector') as {
+          detectComfyUIPath: (appPath: string) => string | null;
+        };
         const detectedPath = detectComfyUIPath(appPath);
         if (detectedPath) {
           this.set('comfyuiPath', detectedPath);

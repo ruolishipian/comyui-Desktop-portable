@@ -41,7 +41,10 @@ export class EnvironmentChecker {
       // 尝试自动检测便携包内的 ComfyUI 目录
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { getAppPath } = require('./app-path') as { getAppPath: () => string };
-      const { detectComfyUIPath } = require('./path-detector') as { detectComfyUIPath: (appPath: string) => string | null };
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { detectComfyUIPath } = require('./path-detector') as {
+        detectComfyUIPath: (appPath: string) => string | null;
+      };
       const appPath = getAppPath();
       const detectedPath = detectComfyUIPath(appPath);
 

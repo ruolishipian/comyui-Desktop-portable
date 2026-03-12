@@ -136,7 +136,7 @@ export class WindowManager {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
         contextIsolation: true,
-        webSecurity: true, // 启用安全策略，提高安全性
+        webSecurity: false, // 禁用同源策略，确保资源正常加载（与旧版本一致）
         webviewTag: true, // 支持 webview 标签，提高插件兼容性
         devTools: true // 显式启用开发者工具
       },
@@ -153,8 +153,11 @@ export class WindowManager {
 
     // 窗口关闭逻辑 - 优化响应速度
     win.on('close', e => {
+      console.log('[Debug] Window close event, isQuiting:', global.isQuiting);
+
       // 如果已经在退出流程中，允许关闭
       if (global.isQuiting) {
+        console.log('[Debug] Already quiting, allowing close');
         return;
       }
 
@@ -163,6 +166,7 @@ export class WindowManager {
 
       // 立即标记为退出状态，防止重复触发
       global.isQuiting = true;
+      console.log('[Debug] Set isQuiting to true');
 
       // 异步保存窗口状态（不阻塞关闭流程）
       if (!win.isDestroyed()) {
@@ -201,10 +205,14 @@ export class WindowManager {
       win.show();
     });
 
+    // 不拦截任何请求，让浏览器自然处理 404 错误
+    // 浏览器会忽略加载失败的资源，这与在普通浏览器中的行为一致
+
     // 页面加载完成后触发 ready 事件
     win.webContents.on('did-finish-load', () => {
-      // 注入 CSS 修复插件布局问题
-      this._injectLayoutFixCSS(win);
+      // 暂时禁用CSS注入，避免干扰ComfyUI原生布局
+      // 如果后续发现特定插件有布局问题，可以针对性修复
+      // this._injectLayoutFixCSS(win);
       this._notifyEvent('ready', 'main');
     });
 
@@ -461,121 +469,19 @@ export class WindowManager {
     this._windows.clear();
   }
 
-  // 注入 CSS 修复插件布局问题
+  // 注入 CSS 修复插件布局问题（已禁用，避免干扰原生布局）
+  // 如果后续发现特定插件有布局问题，可以取消注释此方法
+  /*
   private _injectLayoutFixCSS(win: BrowserWindow): void {
     const css = `
-      /* 修复 WeiLin 提示词插件布局问题 */
-      
-      /* 调整左侧操作区宽度 */
-      .left-panel,
-      .sidebar,
-      [class*="left"],
-      [class*="sidebar"] {
-        max-width: 250px !important;
-        min-width: 200px !important;
-      }
-      
-      /* 统一按钮样式 */
-      button {
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
-        border-radius: 4px !important;
-        padding: 6px 12px !important;
-        margin: 2px !important;
-        transition: all 0.2s ease !important;
-      }
-      
-      button:hover {
-        border-color: rgba(255, 255, 255, 0.4) !important;
-        transform: translateY(-1px) !important;
-      }
-      
-      /* 修复分类标签排列 */
-      .tag-category,
-      [class*="category"],
-      [class*="tag-list"] {
-        display: flex !important;
-        flex-wrap: wrap !important;
-        gap: 8px !important;
-        padding: 8px !important;
-      }
-      
-      .tag-item,
-      [class*="tag-item"],
-      [class*="tag"] {
-        min-width: 80px !important;
-        max-width: 150px !important;
-        text-align: center !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-      }
-      
-      /* 修复输入框样式 */
-      input[type="text"],
-      textarea {
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
-        border-radius: 4px !important;
-        padding: 8px !important;
-        background: rgba(0, 0, 0, 0.3) !important;
-      }
-      
-      /* 修复复选框样式 */
-      input[type="checkbox"] {
-        margin-right: 8px !important;
-        vertical-align: middle !important;
-      }
-      
-      /* 修复面板间距 */
-      .panel,
-      [class*="panel"],
-      [class*="section"] {
-        margin-bottom: 16px !important;
-        padding: 12px !important;
-        border-radius: 8px !important;
-        background: rgba(0, 0, 0, 0.2) !important;
-      }
-      
-      /* 修复滚动条样式 */
-      ::-webkit-scrollbar {
-        width: 8px !important;
-        height: 8px !important;
-      }
-      
-      ::-webkit-scrollbar-track {
-        background: rgba(0, 0, 0, 0.2) !important;
-        border-radius: 4px !important;
-      }
-      
-      ::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.3) !important;
-        border-radius: 4px !important;
-      }
-      
-      ::-webkit-scrollbar-thumb:hover {
-        background: rgba(255, 255, 255, 0.5) !important;
-      }
-      
-      /* 修复 z-index 层级问题 */
-      .modal,
-      [class*="modal"],
-      [class*="dialog"] {
-        z-index: 9999 !important;
-      }
-      
-      /* 修复文字截断问题 */
-      .truncate,
-      [class*="truncate"] {
-        max-width: 100% !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        white-space: nowrap !important;
-      }
+      ... CSS代码已省略 ...
     `;
 
     win.webContents.insertCSS(css).catch(err => {
       console.error('[WindowManager] Failed to inject layout fix CSS:', err);
     });
   }
+  */
 }
 
 // 导出单例
