@@ -41,29 +41,21 @@ export class EnvironmentChecker {
       // 尝试自动检测便携包内的 ComfyUI 目录
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { getAppPath } = require('./app-path') as { getAppPath: () => string };
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { detectComfyUIPath } = require('./path-detector') as {
+        detectComfyUIPath: (appPath: string) => string | null;
+      };
       const appPath = getAppPath();
-      const possiblePaths = [
-        // 便携包内路径（优先）
-        path.join(appPath, 'ComfyUI'),
-        path.join(appPath, 'comfyui'),
-        // 兼容旧版便携包结构（ComfyUI 在父目录）
-        path.join(appPath, '..', 'ComfyUI'),
-        path.join(appPath, '..', 'comfyui')
-      ];
+      const detectedPath = detectComfyUIPath(appPath);
 
-      for (const possiblePath of possiblePaths) {
-        if (existsSync(possiblePath)) {
-          const mainPyPath = path.join(possiblePath, 'main.py');
-          if (existsSync(mainPyPath)) {
-            // 自动设置 ComfyUI 路径
-            configManager.set('comfyuiPath', possiblePath);
-            this._checks.push({
-              type: 'success' as CheckType,
-              msg: `便携包模式：自动检测到 ComfyUI (${possiblePath})`
-            });
-            return;
-          }
-        }
+      if (detectedPath) {
+        // 自动设置 ComfyUI 路径
+        configManager.set('comfyuiPath', detectedPath);
+        this._checks.push({
+          type: 'success' as CheckType,
+          msg: `便携包模式：自动检测到 ComfyUI (${detectedPath})`
+        });
+        return;
       }
 
       // 未找到 ComfyUI，提示用户选择

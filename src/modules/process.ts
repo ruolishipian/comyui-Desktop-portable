@@ -306,8 +306,9 @@ comfyui_portable:
             message: check.msg
           })
           .catch((err: unknown) => {
-            const error = err as Error;
-            logger.error(`显示警告对话框失败：${error.message}`);
+            const error = err as Error | null;
+            const errorMessage = error?.message ?? '未知错误';
+            logger.error(`显示警告对话框失败：${errorMessage}`);
           });
       }
     }
@@ -408,13 +409,14 @@ comfyui_portable:
       // 使用 HTTP 端点检测启动成功（更可靠）
       this._waitForServerReady(port);
     } catch (err) {
-      const error = err as Error;
+      const error = err as Error | null;
       this._clearTimeout();
       this._cancelWaitOn();
       stateManager.status = Status.FAILED;
       this._notifyStatusChange();
-      logger.error(`启动异常：${error.message}`);
-      dialog.showErrorBox('启动失败', error.message);
+      const errorMessage = error?.message ?? '未知错误';
+      logger.error(`启动异常：${errorMessage}`);
+      dialog.showErrorBox('启动失败', errorMessage);
     }
   }
 
@@ -457,7 +459,7 @@ comfyui_portable:
         // 启动健康检查
         this._startHealthCheck(port);
       })
-      .catch((error: Error) => {
+      .catch((error: Error | null) => {
         // 检查是否已被取消
         if (this._waitOnAbortController?.signal.aborted === true) {
           return;
@@ -467,7 +469,10 @@ comfyui_portable:
         // 先设置状态为失败，防止 _handleExit 再次尝试重启
         stateManager.status = Status.FAILED;
         this._notifyStatusChange();
-        logger.error(`服务器启动超时: ${error.message}`);
+
+        // 安全访问 error.message，防止 null 错误
+        const errorMessage = error?.message ?? '未知错误（可能是启动被取消）';
+        logger.error(`服务器启动超时: ${errorMessage}`);
 
         // 启动超时时杀死进程
         if (this._process !== null && !this._process.killed && this._process.pid !== undefined) {
@@ -483,7 +488,7 @@ comfyui_portable:
         }
 
         // 显示错误对话框
-        dialog.showErrorBox('启动失败', `ComfyUI 启动超时: ${error.message}\n请检查日志或重试`);
+        dialog.showErrorBox('启动失败', `ComfyUI 启动超时: ${errorMessage}\n请检查日志或重试`);
 
         // 检查是否应该尝试自动重启
         const autoRestart = configManager.server.autoRestart ?? false;
@@ -554,10 +559,11 @@ comfyui_portable:
         void this._attemptRecovery();
       }
     } catch (err) {
-      const error = err as Error;
+      const error = err as Error | null;
       // 忽略超时错误，可能是服务繁忙
-      if (error.name !== 'AbortError') {
-        logger.error(`ComfyUI 服务无响应: ${error.message}`);
+      if (error?.name !== 'AbortError') {
+        const errorMessage = error?.message ?? '未知错误';
+        logger.error(`ComfyUI 服务无响应: ${errorMessage}`);
         this._consecutiveFailures++;
 
         if (this._consecutiveFailures >= this._maxConsecutiveFailures) {
@@ -875,8 +881,9 @@ comfyui_portable:
         cleanup();
       });
     } catch (err) {
-      const error = err as Error;
-      logger.error(`停止异常：${error.message}`);
+      const error = err as Error | null;
+      const errorMessage = error?.message ?? '未知错误';
+      logger.error(`停止异常：${errorMessage}`);
       // 最后的强制清理
       if (pid !== undefined) {
         this._forceKillProcess(pid, cleanup);

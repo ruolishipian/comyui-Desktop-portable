@@ -136,7 +136,9 @@ export class WindowManager {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
         contextIsolation: true,
-        webSecurity: false
+        webSecurity: false, // 禁用同源策略，确保资源正常加载（与旧版本一致）
+        webviewTag: true, // 支持 webview 标签，提高插件兼容性
+        devTools: true // 显式启用开发者工具
       },
       show: false,
       title: 'ComfyUI桌面-便携包',
@@ -151,8 +153,11 @@ export class WindowManager {
 
     // 窗口关闭逻辑 - 优化响应速度
     win.on('close', e => {
+      console.log('[Debug] Window close event, isQuiting:', global.isQuiting);
+
       // 如果已经在退出流程中，允许关闭
       if (global.isQuiting) {
+        console.log('[Debug] Already quiting, allowing close');
         return;
       }
 
@@ -161,6 +166,7 @@ export class WindowManager {
 
       // 立即标记为退出状态，防止重复触发
       global.isQuiting = true;
+      console.log('[Debug] Set isQuiting to true');
 
       // 异步保存窗口状态（不阻塞关闭流程）
       if (!win.isDestroyed()) {
@@ -199,8 +205,14 @@ export class WindowManager {
       win.show();
     });
 
+    // 不拦截任何请求，让浏览器自然处理 404 错误
+    // 浏览器会忽略加载失败的资源，这与在普通浏览器中的行为一致
+
     // 页面加载完成后触发 ready 事件
     win.webContents.on('did-finish-load', () => {
+      // 暂时禁用CSS注入，避免干扰ComfyUI原生布局
+      // 如果后续发现特定插件有布局问题，可以针对性修复
+      // this._injectLayoutFixCSS(win);
       this._notifyEvent('ready', 'main');
     });
 
@@ -456,6 +468,20 @@ export class WindowManager {
     });
     this._windows.clear();
   }
+
+  // 注入 CSS 修复插件布局问题（已禁用，避免干扰原生布局）
+  // 如果后续发现特定插件有布局问题，可以取消注释此方法
+  /*
+  private _injectLayoutFixCSS(win: BrowserWindow): void {
+    const css = `
+      ... CSS代码已省略 ...
+    `;
+
+    win.webContents.insertCSS(css).catch(err => {
+      console.error('[WindowManager] Failed to inject layout fix CSS:', err);
+    });
+  }
+  */
 }
 
 // 导出单例

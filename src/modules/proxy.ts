@@ -7,8 +7,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 
 // 在测试环境中使用空函数
-const execAsync =
-  process.env.NODE_ENV === 'test' ? () => Promise.resolve({ stdout: '', stderr: '' }) : promisify(exec);
+const execAsync = process.env.NODE_ENV === 'test' ? () => Promise.resolve({ stdout: '', stderr: '' }) : promisify(exec);
 
 // 代理配置接口
 export interface ProxyConfig {
