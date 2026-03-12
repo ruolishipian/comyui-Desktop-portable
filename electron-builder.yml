@@ -22,6 +22,10 @@ files:
   - "!docs/**/*"
   - "!.vscode/**/*"
   - "!.github/**/*"
+  - "!dist/*.zip"
+  - "!dist/*.exe"
+  - "!dist/*.blockmap"
+  - "!dist/builder-*.yml"
 
 # ASAR 打包配置
 asar: true
