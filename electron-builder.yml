@@ -34,6 +34,7 @@ asarUnpack:
 
 # Windows 配置
 win:
+  icon: assets/icon.ico
   target:
     - target: nsis
       arch:
@@ -53,6 +54,8 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: ComfyUI Desktop
   deleteAppDataOnUninstall: false
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
   # 语言选择器配置
   displayLanguageSelector: true
   installerLanguages:

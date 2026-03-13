@@ -3,7 +3,9 @@
  * 集中管理所有窗口的创建、销毁、状态
  */
 
-import { BrowserWindow, dialog, Menu, app } from 'electron';
+import { BrowserWindow, dialog, Menu, app, nativeImage } from 'electron';
+import * as fs from 'fs';
+import * as path from 'path';
 
 import { WindowType, WindowConfig } from '../types';
 
@@ -11,6 +13,15 @@ import { configManager } from './config';
 import { createFileOperationMenuItems } from './menu-utils';
 import { PATHS } from './paths';
 import { stateManager } from './state';
+
+// 获取应用图标
+function getAppIcon(): nativeImage | undefined {
+  const iconPath = PATHS.APP_ICON();
+  if (fs.existsSync(iconPath)) {
+    return nativeImage.createFromPath(iconPath);
+  }
+  return undefined;
+}
 
 // 窗口事件回调类型
 export type WindowEventCallback = (event: string, windowType: WindowType | null) => void;
@@ -71,6 +82,7 @@ export class WindowManager {
       height: 450,
       resizable: false,
       center: true,
+      icon: getAppIcon(),
       webPreferences: {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
@@ -132,6 +144,7 @@ export class WindowManager {
       x: windowConfig.x ?? undefined,
       y: windowConfig.y ?? undefined,
       center: windowConfig.x === null && windowConfig.y === null,
+      icon: getAppIcon(),
       webPreferences: {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
@@ -239,6 +252,7 @@ export class WindowManager {
       height: 600,
       parent: mainWindow ?? undefined,
       modal: false,
+      icon: getAppIcon(),
       webPreferences: {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
@@ -275,6 +289,7 @@ export class WindowManager {
       height: 650,
       parent: mainWindow ?? undefined,
       modal: true,
+      icon: getAppIcon(),
       webPreferences: {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
