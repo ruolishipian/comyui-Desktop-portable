@@ -3,9 +3,9 @@
  * 集中管理所有窗口的创建、销毁、状态
  */
 
-import { BrowserWindow, dialog, Menu, app, nativeImage } from 'electron';
 import * as fs from 'fs';
-import * as path from 'path';
+
+import { BrowserWindow, dialog, Menu, app, nativeImage, NativeImage } from 'electron';
 
 import { WindowType, WindowConfig } from '../types';
 
@@ -15,7 +15,7 @@ import { PATHS } from './paths';
 import { stateManager } from './state';
 
 // 获取应用图标
-function getAppIcon(): nativeImage | undefined {
+function getAppIcon(): NativeImage | undefined {
   const iconPath = PATHS.APP_ICON();
   if (fs.existsSync(iconPath)) {
     return nativeImage.createFromPath(iconPath);
