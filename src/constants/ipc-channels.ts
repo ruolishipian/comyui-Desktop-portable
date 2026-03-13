@@ -62,6 +62,12 @@ export const IPC_CHANNELS = {
   /** 渲染进程就绪 */
   RENDERER_READY: 'rendererReady',
 
+  // ========== 缓存管理 ==========
+  /** 清除浏览器缓存 */
+  CLEAR_BROWSER_CACHE: 'clearBrowserCache',
+  /** 清除存储数据 */
+  CLEAR_STORAGE_DATA: 'clearStorageData',
+
   // ========== 应用生命周期 ==========
   /** 重启应用 */
   RESTART_APP: 'restartApp',
@@ -106,7 +112,9 @@ export const INVOKE_CHANNELS = [
   IPC_CHANNELS.CLOSE_WINDOW,
   IPC_CHANNELS.OPEN_SETTINGS,
   IPC_CHANNELS.OPEN_LOGS,
-  IPC_CHANNELS.GET_STATUS
+  IPC_CHANNELS.GET_STATUS,
+  IPC_CHANNELS.CLEAR_BROWSER_CACHE,
+  IPC_CHANNELS.CLEAR_STORAGE_DATA
 ] as const;
 
 /**

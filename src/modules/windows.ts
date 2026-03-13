@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 
-import { BrowserWindow, dialog, Menu, app, nativeImage, NativeImage } from 'electron';
+import { BrowserWindow, dialog, Menu, app, nativeImage, NativeImage, session } from 'electron';
 
 import { WindowType, WindowConfig } from '../types';
 
@@ -351,6 +351,12 @@ export class WindowManager {
         }
       },
       {
+        label: '强制刷新（清除缓存）',
+        click: () => {
+          if (!win.isDestroyed()) win.webContents.reloadIgnoringCache();
+        }
+      },
+      {
         label: '重置所有配置',
         click: () => {
           void this.resetConfig();
@@ -482,6 +488,47 @@ export class WindowManager {
       }
     });
     this._windows.clear();
+  }
+
+  // 清除浏览器缓存
+  public async clearBrowserCache(): Promise<boolean> {
+    try {
+      const ses = session.defaultSession;
+      await ses.clearCache();
+      console.log('[WindowManager] 浏览器缓存已清除');
+      return true;
+    } catch (err) {
+      console.error('[WindowManager] 清除浏览器缓存失败:', err);
+      return false;
+    }
+  }
+
+  // 清除存储数据（包括 localStorage, sessionStorage, indexedDB 等）
+  public async clearStorageData(): Promise<boolean> {
+    try {
+      const ses = session.defaultSession;
+      await ses.clearStorageData({
+        storages: ['localstorage', 'indexdb', 'serviceworkers', 'cachestorage']
+      });
+      console.log('[WindowManager] 存储数据已清除');
+      return true;
+    } catch (err) {
+      console.error('[WindowManager] 清除存储数据失败:', err);
+      return false;
+    }
+  }
+
+  // 清除所有缓存（浏览器缓存 + 存储数据）
+  public async clearAllCache(): Promise<boolean> {
+    try {
+      await this.clearBrowserCache();
+      await this.clearStorageData();
+      console.log('[WindowManager] 所有缓存已清除');
+      return true;
+    } catch (err) {
+      console.error('[WindowManager] 清除所有缓存失败:', err);
+      return false;
+    }
   }
 
   // 注入 CSS 修复插件布局问题（已禁用，避免干扰原生布局）
