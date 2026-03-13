@@ -52,41 +52,66 @@ export class ProxyManager {
 
   /**
    * 检测 Windows 系统代理
+   * 使用注册表读取 IE/系统代理设置（设置 > 网络和 Internet > 代理）
    */
   private async _detectWindowsProxy(): Promise<ProxyConfig> {
     try {
-      // 使用 netsh 命令查询系统代理设置
-      const { stdout } = await execAsync('netsh winhttp show proxy');
+      // 使用 reg 命令查询注册表中的 IE 代理设置
+      // 这是用户在"设置 > 网络和 Internet > 代理"中配置的代理
+      const { stdout } = await execAsync(
+        'reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings"'
+      );
 
-      // 解析输出
+      // 解析注册表输出
       const lines = stdout.split('\n');
+      let proxyEnable = false;
       let proxyServer = '';
+      let autoConfigUrl = '';
       let bypassList = '';
-      let proxyEnabled = false;
 
       for (const line of lines) {
         const trimmedLine = line.trim();
 
-        // 检查是否启用了代理
-        if (trimmedLine.includes('代理服务器') || trimmedLine.includes('Proxy Server(s)')) {
-          const match = trimmedLine.match(/[:：]\s*(.+)/);
+        // 检查代理是否启用 (ProxyEnable = 1 表示启用)
+        if (trimmedLine.includes('ProxyEnable') && trimmedLine.includes('REG_DWORD')) {
+          const match = trimmedLine.match(/ProxyEnable\s+REG_DWORD\s+0x(\d+)/);
           if (match?.[1]) {
-            proxyServer = match[1].trim();
-            proxyEnabled = proxyServer !== '无' && proxyServer !== 'none' && proxyServer !== '';
+            proxyEnable = match[1] !== '0';
           }
         }
 
-        // 检查绕过列表
-        if (trimmedLine.includes('绕过列表') || trimmedLine.includes('Bypass List')) {
-          const match = trimmedLine.match(/[:：]\s*(.+)/);
+        // 获取代理服务器地址
+        if (trimmedLine.includes('ProxyServer') && trimmedLine.includes('REG_SZ')) {
+          const match = trimmedLine.match(/ProxyServer\s+REG_SZ\s+(.+)/);
+          if (match?.[1]) {
+            proxyServer = match[1].trim();
+          }
+        }
+
+        // 获取自动配置脚本 URL (PAC 文件)
+        if (trimmedLine.includes('AutoConfigURL') && trimmedLine.includes('REG_SZ')) {
+          const match = trimmedLine.match(/AutoConfigURL\s+REG_SZ\s+(.+)/);
+          if (match?.[1]) {
+            autoConfigUrl = match[1].trim();
+          }
+        }
+
+        // 获取绕过列表
+        if (trimmedLine.includes('ProxyOverride') && trimmedLine.includes('REG_SZ')) {
+          const match = trimmedLine.match(/ProxyOverride\s+REG_SZ\s+(.+)/);
           if (match?.[1]) {
             bypassList = match[1].trim();
           }
         }
       }
 
+      // 如果有自动配置脚本，记录日志
+      if (autoConfigUrl) {
+        logger.info(`检测到 PAC 自动配置: ${autoConfigUrl}`);
+      }
+
       // 如果检测到代理服务器,设置环境变量
-      if (proxyEnabled && proxyServer) {
+      if (proxyEnable && proxyServer) {
         // 解析代理服务器地址
         // 格式可能是: "http=127.0.0.1:7890;https=127.0.0.1:7890" 或 "127.0.0.1:7890"
         let httpProxy = '';
@@ -102,6 +127,10 @@ export class ProxyManager {
                 httpProxy = address.trim();
               } else if (protocol.trim().toLowerCase() === 'https') {
                 httpsProxy = address.trim();
+              } else if (protocol.trim().toLowerCase() === 'socks') {
+                // SOCKS 代理，同时设置 http 和 https
+                httpProxy = `socks5://${address.trim()}`;
+                httpsProxy = `socks5://${address.trim()}`;
               }
             }
           }
@@ -112,10 +141,10 @@ export class ProxyManager {
         }
 
         // 添加协议前缀(如果没有)
-        if (httpProxy && !httpProxy.startsWith('http://')) {
+        if (httpProxy && !httpProxy.startsWith('http://') && !httpProxy.startsWith('socks')) {
           httpProxy = `http://${httpProxy}`;
         }
-        if (httpsProxy && !httpsProxy.startsWith('http://')) {
+        if (httpsProxy && !httpsProxy.startsWith('http://') && !httpsProxy.startsWith('socks')) {
           httpsProxy = `http://${httpsProxy}`;
         }
 
@@ -128,6 +157,12 @@ export class ProxyManager {
 
         logger.info(`检测到 Windows 系统代理: HTTP=${httpProxy}, HTTPS=${httpsProxy}`);
         return this._proxyConfig;
+      }
+
+      // 如果有 PAC 自动配置但没有手动代理服务器
+      if (autoConfigUrl) {
+        logger.info('检测到 PAC 自动配置，但无法直接解析代理地址');
+        return { enabled: false };
       }
 
       logger.info('未检测到 Windows 系统代理');

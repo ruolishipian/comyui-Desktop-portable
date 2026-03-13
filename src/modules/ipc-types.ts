@@ -40,6 +40,10 @@ export interface IpcChannels {
   [IPC_CHANNELS.OPEN_SETTINGS]: { params: []; return: void };
   [IPC_CHANNELS.OPEN_LOGS]: { params: []; return: void };
 
+  // 缓存管理
+  [IPC_CHANNELS.CLEAR_BROWSER_CACHE]: { params: []; return: boolean };
+  [IPC_CHANNELS.CLEAR_STORAGE_DATA]: { params: []; return: boolean };
+
   // 渲染进程就绪信号
   [IPC_CHANNELS.RENDERER_READY]: { params: []; return: void };
 

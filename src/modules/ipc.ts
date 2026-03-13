@@ -66,6 +66,8 @@ export class IPCManager {
     this._registerAppHandlers();
     // 窗口状态
     this._registerWindowStateHandlers();
+    // 缓存管理
+    this._registerCacheHandlers();
   }
 
   // 注册配置处理器
@@ -289,6 +291,29 @@ export class IPCManager {
           }
         }
       }
+    });
+  }
+
+  // 注册缓存管理处理器
+  private _registerCacheHandlers(): void {
+    // 清除浏览器缓存
+    typedHandle(IPC_CHANNELS.CLEAR_BROWSER_CACHE, async () => {
+      if (this._windowManager) {
+        const result = await this._windowManager.clearBrowserCache();
+        logger.info(`清除浏览器缓存: ${result ? '成功' : '失败'}`);
+        return result;
+      }
+      return false;
+    });
+
+    // 清除存储数据
+    typedHandle(IPC_CHANNELS.CLEAR_STORAGE_DATA, async () => {
+      if (this._windowManager) {
+        const result = await this._windowManager.clearStorageData();
+        logger.info(`清除存储数据: ${result ? '成功' : '失败'}`);
+        return result;
+      }
+      return false;
     });
   }
 

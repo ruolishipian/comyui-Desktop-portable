@@ -259,7 +259,7 @@ setupConsoleEncoding();
 // 应用准备就绪
 void app
   .whenReady()
-  .then(() => {
+  .then(async () => {
     // 初始化模块
     initializeModules();
 
@@ -268,6 +268,15 @@ void app
 
     // 标记 IPC 就绪
     stateManager.isIpcReady = true;
+
+    // 清除浏览器缓存（防止旧的 JS 文件缓存导致错误）
+    try {
+      await windowManager.clearAllCache();
+      logger.info('启动时已清除浏览器缓存');
+    } catch (err) {
+      const error = err as Error;
+      logger.error(`清除浏览器缓存失败: ${error.message}`);
+    }
 
     // 调试：输出配置路径
     console.log('[Debug] comfyuiPath:', configManager.get('comfyuiPath'));

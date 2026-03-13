@@ -3,7 +3,9 @@
  * 集中管理所有窗口的创建、销毁、状态
  */
 
-import { BrowserWindow, dialog, Menu, app } from 'electron';
+import * as fs from 'fs';
+
+import { BrowserWindow, dialog, Menu, app, nativeImage, NativeImage, session } from 'electron';
 
 import { WindowType, WindowConfig } from '../types';
 
@@ -11,6 +13,15 @@ import { configManager } from './config';
 import { createFileOperationMenuItems } from './menu-utils';
 import { PATHS } from './paths';
 import { stateManager } from './state';
+
+// 获取应用图标
+function getAppIcon(): NativeImage | undefined {
+  const iconPath = PATHS.APP_ICON();
+  if (fs.existsSync(iconPath)) {
+    return nativeImage.createFromPath(iconPath);
+  }
+  return undefined;
+}
 
 // 窗口事件回调类型
 export type WindowEventCallback = (event: string, windowType: WindowType | null) => void;
@@ -71,6 +82,7 @@ export class WindowManager {
       height: 450,
       resizable: false,
       center: true,
+      icon: getAppIcon(),
       webPreferences: {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
@@ -132,6 +144,7 @@ export class WindowManager {
       x: windowConfig.x ?? undefined,
       y: windowConfig.y ?? undefined,
       center: windowConfig.x === null && windowConfig.y === null,
+      icon: getAppIcon(),
       webPreferences: {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
@@ -239,6 +252,7 @@ export class WindowManager {
       height: 600,
       parent: mainWindow ?? undefined,
       modal: false,
+      icon: getAppIcon(),
       webPreferences: {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
@@ -275,6 +289,7 @@ export class WindowManager {
       height: 650,
       parent: mainWindow ?? undefined,
       modal: true,
+      icon: getAppIcon(),
       webPreferences: {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
@@ -333,6 +348,12 @@ export class WindowManager {
         label: '刷新页面',
         click: () => {
           if (!win.isDestroyed()) win.reload();
+        }
+      },
+      {
+        label: '强制刷新（清除缓存）',
+        click: () => {
+          if (!win.isDestroyed()) win.webContents.reloadIgnoringCache();
         }
       },
       {
@@ -467,6 +488,47 @@ export class WindowManager {
       }
     });
     this._windows.clear();
+  }
+
+  // 清除浏览器缓存
+  public async clearBrowserCache(): Promise<boolean> {
+    try {
+      const ses = session.defaultSession;
+      await ses.clearCache();
+      console.log('[WindowManager] 浏览器缓存已清除');
+      return true;
+    } catch (err) {
+      console.error('[WindowManager] 清除浏览器缓存失败:', err);
+      return false;
+    }
+  }
+
+  // 清除存储数据（包括 localStorage, sessionStorage, indexedDB 等）
+  public async clearStorageData(): Promise<boolean> {
+    try {
+      const ses = session.defaultSession;
+      await ses.clearStorageData({
+        storages: ['localstorage', 'indexdb', 'serviceworkers', 'cachestorage']
+      });
+      console.log('[WindowManager] 存储数据已清除');
+      return true;
+    } catch (err) {
+      console.error('[WindowManager] 清除存储数据失败:', err);
+      return false;
+    }
+  }
+
+  // 清除所有缓存（浏览器缓存 + 存储数据）
+  public async clearAllCache(): Promise<boolean> {
+    try {
+      await this.clearBrowserCache();
+      await this.clearStorageData();
+      console.log('[WindowManager] 所有缓存已清除');
+      return true;
+    } catch (err) {
+      console.error('[WindowManager] 清除所有缓存失败:', err);
+      return false;
+    }
   }
 
   // 注入 CSS 修复插件布局问题（已禁用，避免干扰原生布局）
