@@ -232,10 +232,13 @@
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;')
+          // 匹配带时间戳和级别的日志
           .replace(/\[(\d{2}:\d{2}:\d{2})\] \[error\] (.*)/g, '<span class="log-error">[$1] [错误] $2</span>')
           .replace(/\[(\d{2}:\d{2}:\d{2})\] \[warn\] (.*)/g, '<span class="log-warn">[$1] [警告] $2</span>')
           .replace(/\[(\d{2}:\d{2}:\d{2})\] \[info\] (.*)/g, '<span class="log-info">[$1] [信息] $2</span>')
           .replace(/\[(\d{2}:\d{2}:\d{2})\] \[debug\] (.*)/g, '<span class="log-debug">[$1] [调试] $2</span>')
+          // 匹配只有时间戳的日志（ComfyUI 原始输出）
+          .replace(/\[(\d{2}:\d{2}:\d{2})\] ([^\[].*)/g, '<span class="log-info">[$1] [信息] $2</span>')
           .replace(/\n/g, '<br>');
       }
 

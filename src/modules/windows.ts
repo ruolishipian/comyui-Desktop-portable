@@ -353,7 +353,20 @@ export class WindowManager {
       {
         label: '强制刷新（清除缓存）',
         click: () => {
-          if (!win.isDestroyed()) win.webContents.reloadIgnoringCache();
+          if (win.isDestroyed()) return;
+          void (async () => {
+            try {
+              // 先清除所有缓存
+              await this.clearAllCache();
+              console.log('[WindowManager] 强制刷新：缓存已清除');
+              // 再刷新页面
+              win.webContents.reloadIgnoringCache();
+            } catch (err) {
+              console.error('[WindowManager] 强制刷新失败:', err);
+              // 即使清除缓存失败，也尝试刷新
+              win.webContents.reloadIgnoringCache();
+            }
+          })();
         }
       },
       {
