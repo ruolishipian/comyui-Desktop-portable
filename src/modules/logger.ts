@@ -179,8 +179,10 @@ export class Logger {
     // 清理 ANSI 转义码
     const cleanContent = this._removeAnsiCodes(content);
 
+    // 处理多行输出：为每一行都添加时间戳
     const timestamp = new Date().toLocaleTimeString();
-    const logLine = `[${timestamp}] [${level}] ${cleanContent}\n`;
+    const lines = cleanContent.split('\n');
+    const logLine = lines.map(line => `[${timestamp}] [${level}] ${line}`).join('\n') + '\n';
 
     // 更新会话日志缓存
     if (this._sessionLogCache.length < this._maxSessionLogSize) {
@@ -372,8 +374,10 @@ export class Logger {
     if (!this._initialized || !this._comfyUILogFile) return;
 
     const cleanData = this._removeAnsiCodes(data);
+    // 处理多行输出：为每一行都添加时间戳
     const timestamp = new Date().toLocaleTimeString();
-    const line = `[${timestamp}] ${cleanData}\n`;
+    const lines = cleanData.split('\n');
+    const line = lines.map(l => `[${timestamp}] ${l}`).join('\n') + '\n';
 
     // 加入队列
     this._comfyUIWriteQueue.push(line);
