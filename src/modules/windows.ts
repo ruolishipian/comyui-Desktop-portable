@@ -359,8 +359,21 @@ export class WindowManager {
               // 先清除所有缓存
               await this.clearAllCache();
               console.log('[WindowManager] 强制刷新：缓存已清除');
-              // 再刷新页面
-              win.webContents.reloadIgnoringCache();
+
+              // 显示加载界面
+              void win.loadFile(PATHS.LOADING_HTML());
+
+              // 如果 ComfyUI 正在运行，重新加载页面
+              const status = stateManager.status;
+              const port = stateManager.port;
+              if (status === 'running' && port) {
+                // 延迟加载，让用户看到加载界面
+                setTimeout(() => {
+                  if (!win.isDestroyed()) {
+                    void win.loadURL(`http://localhost:${port}`);
+                  }
+                }, 500);
+              }
             } catch (err) {
               console.error('[WindowManager] 强制刷新失败:', err);
               // 即使清除缓存失败，也尝试刷新
