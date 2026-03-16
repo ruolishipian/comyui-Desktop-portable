@@ -41,8 +41,8 @@ export const PATHS = {
   ERROR_HTML: (): string => getAssetsPath('error.html'),
 
   // 图标文件路径
-  TRAY_ICON: (): string => getAssetsPath('tray.ico'),
-  APP_ICON: (): string => getAssetsPath('icon.ico'),
+  TRAY_ICON: (): string => getAssetsPath('icon-tray.png'),
+  APP_ICON: (): string => getAssetsPath('icon-512.png'),
 
   // preload 路径
   PRELOAD_JS: getPreloadPath(),

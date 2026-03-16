@@ -1,0 +1,104 @@
+
+&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+    &lt;title&gt;ComfyUI Icon Generator&lt;/title&gt;
+    &lt;style&gt;
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { display: flex; gap: 40px; margin-bottom: 20px; }
+        .icon-preview { text-align: center; }
+        canvas { border: 1px solid #ccc; }
+        button { padding: 10px 20px; font-size: 16px; margin-top: 10px; }
+    &lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;h1&gt;ComfyUI Icon Generator&lt;/h1&gt;
+    &lt;div class="container"&gt;
+        &lt;div class="icon-preview"&gt;
+            &lt;h2&gt;Main Icon (512x512)&lt;/h2&gt;
+            &lt;canvas id="mainCanvas" width="512" height="512"&gt;&lt;/canvas&gt;
+            &lt;br&gt;
+            &lt;button onclick="downloadIcon('mainCanvas', 'icon.png')"&gt;Download Main Icon&lt;/button&gt;
+        &lt;/div&gt;
+        &lt;div class="icon-preview"&gt;
+            &lt;h2&gt;Tray Icon (256x256)&lt;/h2&gt;
+            &lt;canvas id="trayCanvas" width="256" height="256"&gt;&lt;/canvas&gt;
+            &lt;br&gt;
+            &lt;button onclick="downloadIcon('trayCanvas', 'tray.png')"&gt;Download Tray Icon&lt;/button&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;script&gt;
+        function drawIcon(canvas, size) {
+            const ctx = canvas.getContext('2d');
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const radius = size / 2 - 5;
+
+            ctx.clearRect(0, 0, size, size);
+
+            const gradient1 = ctx.createRadialGradient(centerX - radius/3, centerY - radius/3, 0, centerX, centerY, radius);
+            gradient1.addColorStop(0, '#5B8DEE');
+            gradient1.addColorStop(1, '#7C3AED');
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+            ctx.fillStyle = gradient1;
+            ctx.fill();
+
+            const gradient2 = ctx.createRadialGradient(centerX - radius/6, centerY - radius/6, 0, centerX, centerY, radius/2);
+            gradient2.addColorStop(0, '#818CF8');
+            gradient2.addColorStop(1, '#A78BFA');
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius/2, 0, 2 * Math.PI);
+            ctx.fillStyle = gradient2;
+            ctx.fill();
+
+            const innerRadius = radius/4;
+            for (let i = 0; i &lt; 360; i++) {
+                const angle = (i * Math.PI) / 180;
+                const wave = Math.sin(angle * 8) * 0.3 + 0.7;
+                const x = centerX + Math.cos(angle) * innerRadius * wave;
+                const y = centerY + Math.sin(angle) * innerRadius * wave;
+                
+                const r = Math.round(196 * wave);
+                const g = Math.round(181 * wave);
+                const b = Math.round(253 * wave);
+                
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, 2 * Math.PI);
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fill();
+            }
+
+            for (let i = 0; i &lt; 8; i++) {
+                const dotAngle = (i / 8) * Math.PI * 2;
+                const dotX = centerX + Math.cos(dotAngle) * (radius / 3);
+                const dotY = centerY + Math.sin(dotAngle) * (radius / 3);
+                
+                ctx.beginPath();
+                ctx.arc(dotX, dotY, radius / 12, 0, 2 * Math.PI);
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fill();
+            }
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius / 8, 0, 2 * Math.PI);
+            ctx.fillStyle = '#9D174D';
+            ctx.fill();
+        }
+
+        function downloadIcon(canvasId, filename) {
+            const canvas = document.getElementById(canvasId);
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        drawIcon(document.getElementById('mainCanvas'), 512);
+        drawIcon(document.getElementById('trayCanvas'), 256);
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
