@@ -17,9 +17,26 @@ import { stateManager } from './state';
 // 获取应用图标
 function getAppIcon(): NativeImage | undefined {
   const iconPath = PATHS.APP_ICON();
+
+  // 添加调试日志
+  console.log('[WindowManager] Attempting to load icon from:', iconPath);
+
   if (fs.existsSync(iconPath)) {
-    return nativeImage.createFromPath(iconPath);
+    try {
+      const icon = nativeImage.createFromPath(iconPath);
+      if (icon.isEmpty()) {
+        console.error('[WindowManager] Icon loaded but is empty:', iconPath);
+        return undefined;
+      }
+      console.log('[WindowManager] Icon loaded successfully');
+      return icon;
+    } catch (err) {
+      console.error('[WindowManager] Failed to create icon from path:', iconPath, err);
+      return undefined;
+    }
   }
+
+  console.error('[WindowManager] Icon file not found:', iconPath);
   return undefined;
 }
 
@@ -147,9 +164,12 @@ export class WindowManager {
       icon: getAppIcon(),
       webPreferences: {
         preload: PATHS.PRELOAD_JS,
-        nodeIntegration: false,
-        contextIsolation: true,
-        webSecurity: false, // 禁用同源策略，确保资源正常加载（与旧版本一致）
+        // ========== Chrome 环境模拟配置 ==========
+        nodeIntegration: false, // 禁用 Node 集成（Chrome 无此功能）
+        contextIsolation: true, // 开启上下文隔离（preload 需要）
+        sandbox: false, // 关闭沙箱，让 Vue/React 事件能正常传递
+        webSecurity: false, // 关闭 Web 安全策略，让跨域资源正常加载
+        allowRunningInsecureContent: false, // 禁止不安全内容（Chrome 默认）
         webviewTag: true, // 支持 webview 标签，提高插件兼容性
         devTools: true // 显式启用开发者工具
       },
@@ -223,10 +243,150 @@ export class WindowManager {
 
     // 页面加载完成后触发 ready 事件
     win.webContents.on('did-finish-load', () => {
-      // 暂时禁用CSS注入，避免干扰ComfyUI原生布局
-      // 如果后续发现特定插件有布局问题，可以针对性修复
-      // this._injectLayoutFixCSS(win);
+      // 确保缩放比例为 100%，与浏览器行为一致
+      win.webContents.setZoomFactor(1.0);
+
+      // ========== Chrome 环境模拟 ==========
+      win.webContents
+        .executeJavaScript(
+          `
+        // 1. 覆盖 Electron 环境检测
+        window.electron = undefined;
+        window.process = undefined;
+        window.isElectron = () => false;
+        
+        // 2. 强制使用 Chrome 用户代理
+        try {
+          Object.defineProperty(navigator, 'userAgent', {
+            get: () =>
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+              '(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+          });
+        } catch(e) {}
+        
+        // 3. 监控 postMessage 调用（调试用）
+        const originalPostMessage = window.postMessage;
+        window.postMessage = function(message, targetOrigin, transfer) {
+          if (message && message.type && message.type.startsWith('weilin_prompt_ui_')) {
+            console.log('[Electron Debug] window.postMessage called:', message.type, message);
+          }
+          return originalPostMessage.call(this, message, targetOrigin, transfer);
+        };
+        
+        // 4. 监控 window.parent.postMessage 调用
+        try {
+          const parentPostMessage = window.parent.postMessage;
+          window.parent.postMessage = function(message, targetOrigin, transfer) {
+            if (message && message.type && message.type.startsWith('weilin_prompt_ui_')) {
+              console.log('[Electron Debug] window.parent.postMessage called:', message.type, message);
+              // 直接在当前窗口触发消息事件
+              const event = new MessageEvent('message', {
+                data: message,
+                origin: targetOrigin,
+                source: window
+              });
+              window.dispatchEvent(event);
+              return;
+            }
+            return parentPostMessage.call(this, message, targetOrigin, transfer);
+          };
+        } catch(e) {
+          console.log('[Electron Debug] Failed to override window.parent.postMessage:', e);
+        }
+        
+        // 5. 确保 window.parent 指向 window（解决 iframe 通信问题）
+        try {
+          if (window.parent !== window) {
+            console.log('[Electron Fix] Redirecting window.parent to window');
+            Object.defineProperty(window, 'parent', {
+              get: () => window,
+              set: () => {}
+            });
+          }
+        } catch(e) {}
+        
+        // 6. 确保 window.top 指向 window
+        try {
+          if (window.top !== window) {
+            console.log('[Electron Fix] Redirecting window.top to window');
+            Object.defineProperty(window, 'top', {
+              get: () => window,
+              set: () => {}
+            });
+          }
+        } catch(e) {}
+        
+        // 7. 注入修复 CSS
+        const style = document.createElement('style');
+        style.textContent = \`
+          /* 修复 Lora/模型管理面板的字体与布局 */
+          .lora-manager, .lora-card, .lora-info-panel, .model-card, .model-info-panel,
+          [class*="lora-card"], [class*="model-card"], [class*="info-panel"] {
+            font-size: 14px !important;
+            box-sizing: border-box !important;
+          }
+          
+          /* 修复预览卡片字体太小的问题 - 覆盖 0.55em */
+          .lora_catd_content, .lora-detail__content, .lora-detail__body,
+          .lora-detail__title, .lora-detail__table, .lora-detail__tags {
+            font-size: 14px !important;
+          }
+          
+          /* 确保预览图容器充满，避免文字溢出 */
+          .lora-preview-container, .preview-image-wrapper, .model-preview-container,
+          [class*="preview-container"], [class*="preview-wrapper"] {
+            width: 100% !important;
+            height: 100% !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+          }
+          
+          /* 修复弹窗遮罩层 */
+          .modal-backdrop, .el-dialog__wrapper, [class*="modal"], [class*="dialog"] {
+            background: rgba(0,0,0,0.7) !important;
+            z-index: 99999 !important;
+          }
+          
+          /* 消除 Electron 的默认滚动条差异 */
+          body, html {
+            overflow: auto !important;
+            scrollbar-width: thin !important;
+          }
+        \`;
+        document.head.appendChild(style);
+        
+        // 8. 调试：监控 clickAddTag 的值
+        setTimeout(() => {
+          const clickAddTagValue = localStorage.getItem('weilin_prompt_ui_clickAddTag');
+          console.log('[Electron Debug] clickAddTag value from localStorage:', clickAddTagValue);
+        }, 3000);
+        
+        console.log('[Electron Fix] WeiLin plugin fixes loaded');
+      `
+        )
+        .catch(() => {
+          // 忽略执行错误
+        });
+
+      // 注入CSS修复Electron启动器中的交互问题
+      this._injectLayoutFixCSS(win);
       this._notifyEvent('ready', 'main');
+    });
+
+    // ========== 新窗口处理 ==========
+    // 让外部链接用系统浏览器打开，内部链接由页面自己处理
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      // 如果是外部链接（http/https），用系统浏览器打开
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        // 动态导入 shell
+        void import('electron').then(({ shell }) => {
+          shell.openExternal(url).catch(() => {});
+        });
+        return { action: 'deny' };
+      }
+      // 其他情况（如 javascript: 或内部链接），让页面自己处理
+      return { action: 'allow' };
     });
 
     // 右键菜单
@@ -557,19 +717,19 @@ export class WindowManager {
     }
   }
 
-  // 注入 CSS 修复插件布局问题（已禁用，避免干扰原生布局）
-  // 如果后续发现特定插件有布局问题，可以取消注释此方法
-  /*
+  // 注入 CSS 修复 Electron 启动器中的交互问题
   private _injectLayoutFixCSS(win: BrowserWindow): void {
-    const css = `
-      ... CSS代码已省略 ...
-    `;
-
-    win.webContents.insertCSS(css).catch(err => {
-      console.error('[WindowManager] Failed to inject layout fix CSS:', err);
-    });
+    // 读取外部CSS文件
+    const cssPath = PATHS.ASSETS_DIR('comfyui-ui-fix.css');
+    try {
+      const css = fs.readFileSync(cssPath, 'utf-8');
+      win.webContents.insertCSS(css).catch(err => {
+        console.error('[WindowManager] Failed to inject layout fix CSS:', err);
+      });
+    } catch (err) {
+      console.error('[WindowManager] Failed to read CSS file:', cssPath, err);
+    }
   }
-  */
 }
 
 // 导出单例
