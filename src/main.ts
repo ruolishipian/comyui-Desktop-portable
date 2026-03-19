@@ -24,10 +24,19 @@ import {
 } from './modules';
 import { StateData } from './types';
 
-// 禁用 GPU 沙箱（解决权限问题）
-// 注意：这些方法需要在 app ready 之前调用
-app.disableHardwareAcceleration();
+// ========== Chrome 环境模拟配置 ==========
+// 禁用 Electron 所有非 Chrome 原生行为，让插件认为运行在 Chrome 中
+app.disableHardwareAcceleration(); // 消除渲染差异
 app.commandLine.appendSwitch('no-sandbox');
+app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors'); // 禁用 Electron 自定义 CORS 规则
+app.commandLine.appendSwitch('enable-experimental-web-platform-features', 'false'); // 关闭实验性特性
+app.commandLine.appendSwitch('disable-electron-zoom-controls'); // 禁用 Electron 自定义缩放
+
+// 设置 App User Model ID（解决 Windows 任务栏图标问题）
+// 这对于 Windows 任务栏正确显示图标非常重要
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.comfyui.portable-desktop');
+}
 
 // 全局退出标记
 declare global {

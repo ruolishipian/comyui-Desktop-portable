@@ -63,11 +63,20 @@ export class TrayManager {
   private _findIcon(): string | null {
     const iconPaths = [PATHS.TRAY_ICON(), PATHS.APP_ICON()];
 
+    logger.info('[TrayManager] Searching for tray icon...');
+    logger.info(`[TrayManager] process.resourcesPath: ${process.resourcesPath}`);
+    logger.info(`[TrayManager] app.isPackaged: ${app.isPackaged}`);
+
     for (const iconPath of iconPaths) {
+      logger.info(`[TrayManager] Checking icon path: ${iconPath}`);
       if (fsSync.existsSync(iconPath)) {
+        logger.info(`[TrayManager] Found icon at: ${iconPath}`);
         return iconPath;
       }
+      logger.warn(`[TrayManager] Icon not found at: ${iconPath}`);
     }
+
+    logger.error('[TrayManager] No icon found in any location');
     return null;
   }
 
