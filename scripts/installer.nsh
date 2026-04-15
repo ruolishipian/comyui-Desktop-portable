@@ -70,6 +70,11 @@
     RMDir /r "$INSTDIR\data\data"
   ${EndIf}
 
+  ; 修正注册表 DisplayIcon 指向应用程序 EXE 而非卸载程序图标
+  ; 原因: electron-builder 的 NSIS 模板在定义 UNINSTALLER_ICON 时，
+  ; 会将 DisplayIcon 指向 uninstallerIcon.ico，导致控制面板显示卸载程序图标
+  WriteRegStr SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "DisplayIcon" "$INSTDIR\${MAIN_EXE},0"
+
   ; 刷新 Windows 图标缓存，防止重启后图标丢失
   DetailPrint "正在刷新图标缓存..."
   ExecWait 'ie4uinit.exe -show'

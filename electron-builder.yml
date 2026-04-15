@@ -56,9 +56,13 @@ nsis:
   shortcutName: ComfyUI-Desktop-portable
   deleteAppDataOnUninstall: false
   # 图标配置 - 确保路径正确
+  # 注意: 移除 uninstallerIcon 和 installerHeaderIcon 配置
+  # 原因: 当定义 UNINSTALLER_ICON 时，electron-builder 的 NSIS 模板会将
+  # 注册表 DisplayIcon 指向 uninstallerIcon.ico 而非应用程序 EXE，
+  # 导致 Windows 控制面板/设置中显示的是卸载程序图标而非应用图标
   installerIcon: assets/icon.ico
-  uninstallerIcon: assets/icon.ico
-  installerHeaderIcon: assets/icon.ico
+  # uninstallerIcon: assets/icon.ico
+  # installerHeaderIcon: assets/icon.ico
   # 语言选择器配置
   displayLanguageSelector: true
   installerLanguages:

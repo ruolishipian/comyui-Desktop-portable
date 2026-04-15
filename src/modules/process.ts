@@ -79,6 +79,90 @@ export class ProcessManager {
     );
   }
 
+  // 部署 sitecustomize.py 到 Python 的 site-packages 目录
+  // 此文件修复 Windows 上 subprocess 的 UnicodeDecodeError 问题
+  private _deploySitecustomize(sitePackagesDir: string): void {
+    if (process.platform !== 'win32') return;
+
+    try {
+      if (!fsSync.existsSync(sitePackagesDir)) {
+        fsSync.mkdirSync(sitePackagesDir, { recursive: true });
+      }
+
+      const targetPath = path.join(sitePackagesDir, 'sitecustomize.py');
+      const sourcePath = path.join(__dirname, '..', '..', 'scripts', 'sitecustomize.py');
+
+      // 如果源文件存在且目标不存在或内容不同，则复制
+      if (fsSync.existsSync(sourcePath)) {
+        let needCopy = true;
+        if (fsSync.existsSync(targetPath)) {
+          const sourceContent = fsSync.readFileSync(sourcePath, 'utf8');
+          const targetContent = fsSync.readFileSync(targetPath, 'utf8');
+          needCopy = sourceContent !== targetContent;
+        }
+
+        if (needCopy) {
+          fsSync.copyFileSync(sourcePath, targetPath);
+          logger.info(`已部署 sitecustomize.py 到 ${targetPath}`);
+        }
+      } else {
+        // 源文件不存在时，直接在目标位置创建
+        if (!fsSync.existsSync(targetPath)) {
+          const content = `"""
+sitecustomize.py - Python startup compat fixes
+1) subprocess UnicodeDecodeError on Windows
+2) gitpython str/bytes endswith TypeError on Python 3.13+
+"""
+import subprocess, sys
+if sys.platform == 'win32' and sys.flags.utf8_mode:
+    _original_popen_init = subprocess.Popen.__init__
+    def _patched_popen_init(self, args, **kwargs):
+        if kwargs.get('text', False) or kwargs.get('universal_newlines', False) or 'encoding' in kwargs:
+            if 'errors' not in kwargs:
+                kwargs['errors'] = 'replace'
+        _original_popen_init(self, args, **kwargs)
+    subprocess.Popen.__init__ = _patched_popen_init
+try:
+    import git.cmd as _git_cmd
+except (ImportError, TypeError):
+    pass
+else:
+    if not getattr(_git_cmd, '_endswith_compat_patched', False):
+        def _safe_endswith(value, suffix):
+            if isinstance(value, bytes) and isinstance(suffix, bytes):
+                return value.endswith(suffix)
+            if isinstance(value, str) and isinstance(suffix, str):
+                return value.endswith(suffix)
+            return False
+        _orig_execute = _git_cmd.Git.execute
+        def _patched_execute(self, *args, **kwargs):
+            try:
+                return _orig_execute(self, *args, **kwargs)
+            except TypeError as e:
+                if "endswith" not in str(e):
+                    raise
+                kwargs2 = dict(kwargs)
+                kwargs2['strip_newline_in_stdout'] = False
+                result = _orig_execute(self, *args, **kwargs2)
+                if isinstance(result, (str, bytes)):
+                    nl = b"\\n" if isinstance(result, bytes) else "\\n"
+                    if _safe_endswith(result, nl):
+                        result = result[:-1]
+                return result
+        _git_cmd.Git.execute = _patched_execute
+        _git_cmd._endswith_compat_patched = True
+`;
+          fsSync.writeFileSync(targetPath, content, 'utf8');
+          logger.info(`已创建 sitecustomize.py 到 ${targetPath}`);
+        }
+      }
+    } catch (err) {
+      const error = err as Error | null;
+      const errorMessage = error?.message ?? '未知错误';
+      logger.warn(`部署 sitecustomize.py 失败: ${errorMessage}`);
+    }
+  }
+
   // 确保必要目录存在
   private _ensureDirectories(comfyuiPath: string): void {
     const directories = [
@@ -389,16 +473,32 @@ comfyui_portable:
         }
       }
 
+      // 构建 sitecustomize.py 的路径（修复 Windows 上 subprocess UnicodeDecodeError）
+      // sitecustomize.py 会在 Python 启动时自动加载，monkey-patch subprocess 模块
+      // 使 text=True 模式下解码子进程输出时使用 errors='replace' 而非抛出异常
+      const sitecustomizeDir = path.join(path.dirname(pythonPath), 'Lib', 'site-packages');
+
       // 构建完整的环境变量对象
       const processEnv: Record<string, string> = {
         ...process.env,
         ...customEnv, // 应用自定义环境变量
         COMFYUI_BASE_PATH: comfyuiPath,
-        PYTHONPATH: `${comfyuiPath}${path.delimiter}${process.env['PYTHONPATH'] ?? ''}`
+        PYTHONPATH: `${comfyuiPath}${path.delimiter}${process.env['PYTHONPATH'] ?? ''}`,
+        // 强制 Python 使用 UTF-8 模式（解决 Windows 上的编码问题）
+        // PYTHONUTF8=1 启用 Python UTF-8 模式
+        // PYTHONIOENCODING=utf-8 强制标准流使用 UTF-8
+        // PYTHONLEGACYWINDOWSSTDIO=0 禁止 Python 在 Windows 上使用遗留的本地编码标准流
+        PYTHONUTF8: '1',
+        PYTHONIOENCODING: 'utf-8',
+        PYTHONLEGACYWINDOWSSTDIO: '0'
       };
 
       // 应用代理设置到环境变量
       const envWithProxy = proxyManager.applyProxyToEnv(processEnv);
+
+      // 部署 sitecustomize.py 到 Python 的 site-packages 目录
+      // 此文件会在 Python 启动时自动加载，修复 subprocess 的 UnicodeDecodeError
+      this._deploySitecustomize(sitecustomizeDir);
 
       // 启动进程
       this._process = spawn(pythonPath, fullArgs, {
@@ -648,7 +748,13 @@ comfyui_portable:
     const stdoutThrottle = configManager.advanced.stdoutThrottle ?? 0;
 
     this._process.stdout?.on('data', (data: Buffer) => {
-      const output = data.toString().trim();
+      // 安全解码：优先 UTF-8，失败时回退到 latin1（不会抛出异常）
+      let output: string;
+      try {
+        output = data.toString('utf8').trim();
+      } catch {
+        output = data.toString('latin1').trim();
+      }
       if (output) {
         // 节流控制
         const now = Date.now();
@@ -668,7 +774,13 @@ comfyui_portable:
     let lastStderrTime = 0;
 
     this._process.stderr?.on('data', (data: Buffer) => {
-      const output = data.toString().trim();
+      // 安全解码：优先 UTF-8，失败时回退到 latin1（不会抛出异常）
+      let output: string;
+      try {
+        output = data.toString('utf8').trim();
+      } catch {
+        output = data.toString('latin1').trim();
+      }
       if (output) {
         // 节流控制
         const now = Date.now();
