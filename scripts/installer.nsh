@@ -33,17 +33,17 @@
 !macro customInstall
   ; 检查主程序文件是否存在
   ${If} ${FileExists} "$INSTDIR\${MAIN_EXE}"
-    DetailPrint "主程序文件已正确安装: ${MAIN_EXE}"
+    DetailPrint "Main program installed: ${MAIN_EXE}"
   ${Else}
-    MessageBox MB_OK|MB_ICONSTOP "安装失败：主程序文件未找到！请重新运行安装程序或使用便携版。"
+    MessageBox MB_ICONSTOP "Installation failed: Main program not found!"
     Abort
   ${EndIf}
 
   ; 验证图标文件是否存在
   ${If} ${FileExists} "$INSTDIR\resources\assets\icon.ico"
-    DetailPrint "图标文件已正确安装: icon.ico"
+    DetailPrint "Icon file installed: icon.ico"
   ${Else}
-    MessageBox MB_OK|MB_ICONWARNING "警告：图标文件未找到，快捷方式可能显示异常。请尝试重新安装或使用便携版。"
+    MessageBox MB_ICONEXCLAMATION "Warning: Icon file not found."
   ${EndIf}
 
   ; 恢复配置文件
