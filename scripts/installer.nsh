@@ -35,8 +35,15 @@
   ${If} ${FileExists} "$INSTDIR\${MAIN_EXE}"
     DetailPrint "主程序文件已正确安装: ${MAIN_EXE}"
   ${Else}
-    MessageBox MB_OK|MB_ICONSTOP "安装失败：主程序文件未找到！$\n$\n请重新运行安装程序或使用便携版。"
+    MessageBox MB_OK|MB_ICONSTOP "安装失败：主程序文件未找到！请重新运行安装程序或使用便携版。"
     Abort
+  ${EndIf}
+
+  ; 验证图标文件是否存在
+  ${If} ${FileExists} "$INSTDIR\resources\assets\icon.ico"
+    DetailPrint "图标文件已正确安装: icon.ico"
+  ${Else}
+    MessageBox MB_OK|MB_ICONWARNING "警告：图标文件未找到，快捷方式可能显示异常。请尝试重新安装或使用便携版。"
   ${EndIf}
 
   ; 恢复配置文件
@@ -62,6 +69,17 @@
     DetailPrint "检测到嵌套的 data 目录，正在清理..."
     RMDir /r "$INSTDIR\data\data"
   ${EndIf}
+
+  ; 刷新 Windows 图标缓存，防止重启后图标丢失
+  DetailPrint "正在刷新图标缓存..."
+  ExecWait 'ie4uinit.exe -show'
+  ExecWait 'ie4uinit.exe -ClearLocalIconCache'
+  ; 强制刷新系统图标缓存
+  SetShellVarContext current
+  Delete "$APPDATA\Microsoft\Windows\IconCache.db"
+  Delete "$LOCALAPPDATA\Microsoft\Windows\IconCache.db"
+  Delete "$LOCALAPPDATA\IconCache.db"
+  DetailPrint "图标缓存已刷新"
 
   ; 清理备份目录
   RMDir /r "${BACKUP_DIR}"

@@ -50,12 +50,15 @@ nsis:
   perMachine: false
   allowToChangeInstallationDirectory: true
   allowElevation: true
-  createDesktopShortcut: true
+  # 快捷方式配置 - 确保图标正确关联
+  createDesktopShortcut: always
   createStartMenuShortcut: true
   shortcutName: ComfyUI-Desktop-portable
   deleteAppDataOnUninstall: false
+  # 图标配置 - 确保路径正确
   installerIcon: assets/icon.ico
   uninstallerIcon: assets/icon.ico
+  installerHeaderIcon: assets/icon.ico
   # 语言选择器配置
   displayLanguageSelector: true
   installerLanguages:
@@ -64,7 +67,7 @@ nsis:
   language: "2052"  # 简体中文 (默认语言)
   # 注意: multiLanguageInstaller 已移除,避免重复语言选择
   artifactName: ${productName}-${version}-setup.${ext}
-  # 安装前执行的脚本 - 备份配置文件
+  # 安装前执行的脚本 - 备份配置文件、验证图标、刷新缓存
   include: "scripts/installer.nsh"
 
 # 语言过滤 - 只保留中文和英文

@@ -3,14 +3,19 @@
  * 集中管理启动前的环境检查
  */
 
+import { exec } from 'child_process';
 import fs, { existsSync } from 'fs';
 import net from 'net';
 import path from 'path';
+import { promisify } from 'util';
 
 import { CheckType, EnvironmentCheck } from '../types';
 
 import { configManager } from './config';
+import { logger } from './logger';
 import { findPythonPath } from './path-utils';
+
+const execAsync = promisify(exec);
 
 // 环境检查器
 export class EnvironmentChecker {
@@ -194,6 +199,169 @@ export class EnvironmentChecker {
     }
 
     return null;
+  }
+
+  /**
+   * 检查并清理占用指定端口的进程
+   * 在启动前调用，确保端口可用
+   * @param port 要检查的端口
+   * @returns 返回清理结果 { cleaned: boolean, pids: number[] }
+   */
+  public async checkAndCleanPort(port: number): Promise<{ cleaned: boolean; pids: number[]; error?: string }> {
+    const isAvailable = await this._checkPortAvailable(port);
+    if (isAvailable) {
+      logger.info(`端口 ${port} 可用，无需清理`);
+      return { cleaned: false, pids: [] };
+    }
+
+    logger.warn(`端口 ${port} 已被占用，尝试查找并清理占用进程...`);
+
+    try {
+      const pids = await this._findProcessByPort(port);
+      if (pids.length === 0) {
+        logger.warn(`无法找到占用端口 ${port} 的进程`);
+        return { cleaned: false, pids: [], error: '无法找到占用进程' };
+      }
+
+      logger.info(`找到占用端口 ${port} 的进程: PID ${pids.join(', ')}`);
+
+      // 尝试终止进程
+      const killedPids: number[] = [];
+      const failedPids: number[] = [];
+
+      for (const pid of pids) {
+        const killed = await this._killProcess(pid);
+        if (killed) {
+          killedPids.push(pid);
+          logger.info(`已终止进程 PID ${pid}`);
+        } else {
+          failedPids.push(pid);
+          logger.warn(`终止进程 PID ${pid} 失败`);
+        }
+      }
+
+      // 等待端口释放
+      if (killedPids.length > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const portNowAvailable = await this._checkPortAvailable(port);
+        if (portNowAvailable) {
+          logger.info(`端口 ${port} 已释放`);
+          return { cleaned: true, pids: killedPids };
+        } else {
+          logger.warn(`端口 ${port} 仍被占用`);
+          return { cleaned: false, pids: killedPids, error: '端口仍被占用' };
+        }
+      }
+
+      return {
+        cleaned: false,
+        pids: killedPids,
+        error: failedPids.length > 0 ? `无法终止进程: ${failedPids.join(', ')}` : '未知错误'
+      };
+    } catch (err) {
+      const error = err as Error;
+      logger.error(`清理端口 ${port} 时发生错误: ${error.message}`);
+      return { cleaned: false, pids: [], error: error.message };
+    }
+  }
+
+  /**
+   * 查找占用指定端口的进程 PID
+   * @param port 端口号
+   * @returns 占用该端口的进程 PID 列表
+   */
+  private async _findProcessByPort(port: number): Promise<number[]> {
+    const pids: number[] = [];
+
+    try {
+      if (process.platform === 'win32') {
+        // Windows: 使用 netstat -ano 查找
+        const { stdout } = await execAsync(`netstat -ano | findstr :${port}`);
+        const lines = stdout.split('\n').filter(line => line.trim());
+
+        for (const line of lines) {
+          // 解析 netstat 输出，格式如: "  TCP    127.0.0.1:8188    0.0.0.0:0    LISTENING    12345"
+          const parts = line.trim().split(/\s+/);
+          const pidStr = parts[parts.length - 1] ?? '';
+          const pid = parseInt(pidStr, 10);
+          if (!isNaN(pid) && pid > 0 && !pids.includes(pid)) {
+            pids.push(pid);
+          }
+        }
+      } else {
+        // Linux/macOS: 使用 lsof 查找
+        try {
+          const { stdout } = await execAsync(`lsof -i :${port} -t`);
+          const lines = stdout.split('\n').filter(line => line.trim());
+          for (const line of lines) {
+            const pid = parseInt(line.trim(), 10);
+            if (!isNaN(pid) && pid > 0 && !pids.includes(pid)) {
+              pids.push(pid);
+            }
+          }
+        } catch {
+          // lsof 可能不存在或没有权限，尝试使用 ss
+          try {
+            const { stdout } = await execAsync(`ss -tlnp | grep :${port}`);
+            // 解析 ss 输出，格式如: "LISTEN  0  128  127.0.0.1:8188  *:*  users:(("python",pid=12345,fd=3))"
+            const pidMatch = stdout.match(/pid=(\d+)/g);
+            if (pidMatch) {
+              for (const match of pidMatch) {
+                const pid = parseInt(match.replace('pid=', ''), 10);
+                if (!isNaN(pid) && pid > 0 && !pids.includes(pid)) {
+                  pids.push(pid);
+                }
+              }
+            }
+          } catch {
+            // ss 也不可用
+            logger.warn('无法使用 lsof 或 ss 查找端口占用进程');
+          }
+        }
+      }
+    } catch (err) {
+      const error = err as Error;
+      logger.error(`查找端口 ${port} 占用进程失败: ${error.message}`);
+    }
+
+    return pids;
+  }
+
+  /**
+   * 终止指定进程
+   * @param pid 进程 ID
+   * @returns 是否成功终止
+   */
+  private async _killProcess(pid: number): Promise<boolean> {
+    try {
+      if (process.platform === 'win32') {
+        // Windows: 使用 taskkill
+        await execAsync(`taskkill /PID ${pid} /F`);
+      } else {
+        // Linux/macOS: 使用 kill
+        try {
+          // 先尝试 SIGTERM
+          await execAsync(`kill ${pid}`);
+          // 等待进程退出
+          await new Promise(resolve => setTimeout(resolve, 500));
+          // 检查进程是否还存在
+          try {
+            await execAsync(`kill -0 ${pid}`);
+            // 进程还存在，使用 SIGKILL
+            await execAsync(`kill -9 ${pid}`);
+          } catch {
+            // 进程已退出
+          }
+        } catch {
+          // 可能进程已退出
+        }
+      }
+      return true;
+    } catch (err) {
+      const error = err as Error;
+      logger.error(`终止进程 PID ${pid} 失败: ${error.message}`);
+      return false;
+    }
   }
 
   // 检查权限

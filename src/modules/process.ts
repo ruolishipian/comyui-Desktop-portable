@@ -286,6 +286,17 @@ comfyui_portable:
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
+    // 检查并清理端口占用（在环境检查之前）
+    const serverConfig = configManager.server;
+    const targetPort = serverConfig.port ?? 8188;
+    logger.info(`检查端口 ${targetPort} 是否可用...`);
+    const cleanResult = await environmentChecker.checkAndCleanPort(targetPort);
+    if (cleanResult.cleaned) {
+      logger.info(`已清理占用端口 ${targetPort} 的进程: PID ${cleanResult.pids.join(', ')}`);
+    } else if (cleanResult.error) {
+      logger.warn(`端口 ${targetPort} 清理失败: ${cleanResult.error}，将尝试使用其他端口`);
+    }
+
     // 环境检查
     logger.info('开始环境自检');
     const checks = await environmentChecker.runAllChecks();
@@ -949,6 +960,17 @@ comfyui_portable:
       logger.info('重启 ComfyUI：没有运行中的进程，直接启动');
     } else {
       logger.info(`重启 ComfyUI：当前状态为 ${currentStatus}，直接启动`);
+    }
+
+    // 重启时也检查并清理端口占用
+    const serverConfig = configManager.server;
+    const targetPort = serverConfig.port ?? 8188;
+    logger.info(`重启前检查端口 ${targetPort} 是否可用...`);
+    const cleanResult = await environmentChecker.checkAndCleanPort(targetPort);
+    if (cleanResult.cleaned) {
+      logger.info(`已清理占用端口 ${targetPort} 的进程: PID ${cleanResult.pids.join(', ')}`);
+    } else if (cleanResult.error) {
+      logger.warn(`端口 ${targetPort} 清理失败: ${cleanResult.error}，将尝试使用其他端口`);
     }
 
     // 启动新进程

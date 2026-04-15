@@ -1,6 +1,6 @@
 {
   "name": "comfyui-portable-desktop",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "ComfyUI 便携桌面版 - TypeScript 模块化架构",
   "main": "dist/src/main.js",
   "scripts": {
@@ -24,6 +24,7 @@
     "build:win:installer": "npm run build && electron-builder --win nsis --config",
     "build:win:portable": "npm run build && electron-builder --win zip --config",
     "build:win:all": "npm run build && electron-builder --win --config",
+    "verify:icon": "node scripts/verify-icon-embedding.js",
     "test": "npm run test:unit",
     "test:unit": "npm run test:unit:main && npm run test:unit:renderer",
     "test:unit:main": "jest --config test/jest.config.js",

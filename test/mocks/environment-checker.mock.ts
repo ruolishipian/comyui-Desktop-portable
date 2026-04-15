@@ -110,6 +110,18 @@ export class EnvironmentChecker {
     return null;
   }
 
+  // 检查并清理端口占用（Mock 实现）
+  public async checkAndCleanPort(
+    port: number
+  ): Promise<{ cleaned: boolean; pids: number[]; error?: string }> {
+    const isAvailable = await this._checkPortAvailable(port);
+    if (isAvailable) {
+      return { cleaned: false, pids: [] };
+    }
+    // Mock 模式下返回未清理结果，让测试继续执行
+    return { cleaned: false, pids: [], error: 'Mock: 无法清理端口' };
+  }
+
   // 检查权限
   private async _checkPermissions(): Promise<void> {
     try {

@@ -39,7 +39,8 @@ jest.mock('../../../../src/modules/environment', () => ({
   environmentChecker: {
     runAllChecks: jest.fn(() => Promise.resolve([])),
     hasErrors: jest.fn(() => false),
-    findAvailablePort: jest.fn(() => Promise.resolve(8188))
+    findAvailablePort: jest.fn(() => Promise.resolve(8188)),
+    checkAndCleanPort: jest.fn(() => Promise.resolve({ cleaned: false, pids: [] }))
   }
 }));
 
