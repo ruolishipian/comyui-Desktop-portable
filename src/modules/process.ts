@@ -109,11 +109,13 @@ export class ProcessManager {
         // 源文件不存在时，直接在目标位置创建
         if (!fsSync.existsSync(targetPath)) {
           const content = `"""
-sitecustomize.py - Python startup compat fixes
-1) subprocess UnicodeDecodeError on Windows
-2) gitpython str/bytes endswith TypeError on Python 3.13+
+sitecustomize.py - 修复 Windows 上 subprocess UnicodeDecodeError
+当 PYTHONUTF8=1 时，subprocess text=True 模式使用 UTF-8 解码，
+但 Windows 原生程序输出使用 GBK/cp936，导致解码失败。
+此模块 monkey-patch subprocess.Popen，自动添加 errors='replace'。
 """
-import subprocess, sys
+import subprocess
+import sys
 if sys.platform == 'win32' and sys.flags.utf8_mode:
     _original_popen_init = subprocess.Popen.__init__
     def _patched_popen_init(self, args, **kwargs):
@@ -122,35 +124,6 @@ if sys.platform == 'win32' and sys.flags.utf8_mode:
                 kwargs['errors'] = 'replace'
         _original_popen_init(self, args, **kwargs)
     subprocess.Popen.__init__ = _patched_popen_init
-try:
-    import git.cmd as _git_cmd
-except (ImportError, TypeError):
-    pass
-else:
-    if not getattr(_git_cmd, '_endswith_compat_patched', False):
-        def _safe_endswith(value, suffix):
-            if isinstance(value, bytes) and isinstance(suffix, bytes):
-                return value.endswith(suffix)
-            if isinstance(value, str) and isinstance(suffix, str):
-                return value.endswith(suffix)
-            return False
-        _orig_execute = _git_cmd.Git.execute
-        def _patched_execute(self, *args, **kwargs):
-            try:
-                return _orig_execute(self, *args, **kwargs)
-            except TypeError as e:
-                if "endswith" not in str(e):
-                    raise
-                kwargs2 = dict(kwargs)
-                kwargs2['strip_newline_in_stdout'] = False
-                result = _orig_execute(self, *args, **kwargs2)
-                if isinstance(result, (str, bytes)):
-                    nl = b"\\n" if isinstance(result, bytes) else "\\n"
-                    if _safe_endswith(result, nl):
-                        result = result[:-1]
-                return result
-        _git_cmd.Git.execute = _patched_execute
-        _git_cmd._endswith_compat_patched = True
 `;
           fsSync.writeFileSync(targetPath, content, 'utf8');
           logger.info(`已创建 sitecustomize.py 到 ${targetPath}`);
@@ -160,6 +133,62 @@ else:
       const error = err as Error | null;
       const errorMessage = error?.message ?? '未知错误';
       logger.warn(`部署 sitecustomize.py 失败: ${errorMessage}`);
+    }
+  }
+
+  // 修复 gitpython 的 str/bytes endswith TypeError (Python 3.13+)
+  // git/cmd.py 中 stdout_value.endswith(newline) 在 str/bytes 类型不匹配时会崩溃
+  // 由于 git/cmd.py 的顶层 import 会触发 git/__init__.py 的 refresh()，
+  // 运行时 monkey-patch 无法在 refresh() 之前生效，必须直接修改源码
+  private _patchGitpython(sitePackagesDir: string): void {
+    try {
+      const cmdPyPath = path.join(sitePackagesDir, 'git', 'cmd.py');
+      if (!fsSync.existsSync(cmdPyPath)) return;
+
+      let content = fsSync.readFileSync(cmdPyPath, 'utf8');
+
+      // 检查是否已经修复过
+      if (content.includes('_gitpython_compat_patched')) return;
+
+      // 修复 endswith 类型不匹配：在 endswith 调用前加 isinstance 类型检查
+      // 原始代码：if stdout_value.endswith(newline) and strip_newline_in_stdout:
+      // 修复后：if isinstance(stdout_value, type(newline)) and stdout_value.endswith(newline) and strip_newline_in_stdout:
+      const patterns = [
+        // 第一处：stdout_value.endswith(newline) and strip_newline_in_stdout
+        {
+          old: 'if stdout_value.endswith(newline) and strip_newline_in_stdout:  # type: ignore[arg-type]',
+          new: 'if isinstance(stdout_value, type(newline)) and stdout_value.endswith(newline) and strip_newline_in_stdout:'
+        },
+        // 第二处：stderr_value.endswith(newline)（在 output_stream is None 分支）
+        {
+          old: '                if stderr_value.endswith(newline):  # type: ignore[arg-type]\n                    stderr_value = stderr_value[:-1]\n\n                status = proc.returncode',
+          new: '                if isinstance(stderr_value, type(newline)) and stderr_value.endswith(newline):\n                    stderr_value = stderr_value[:-1]\n\n                status = proc.returncode'
+        },
+        // 第三处：stderr_value.endswith(newline)（在 output_stream 分支）
+        {
+          old: '                if stderr_value.endswith(newline):  # type: ignore[arg-type]\n                    stderr_value = stderr_value[:-1]\n                status = proc.wait()',
+          new: '                if isinstance(stderr_value, type(newline)) and stderr_value.endswith(newline):\n                    stderr_value = stderr_value[:-1]\n                status = proc.wait()'
+        }
+      ];
+
+      let patched = false;
+      for (const { old, new: newStr } of patterns) {
+        if (content.includes(old)) {
+          content = content.replace(old, newStr);
+          patched = true;
+        }
+      }
+
+      if (patched) {
+        // 添加标记，避免重复 patch
+        content += '\n_gitpython_compat_patched = True\n';
+        fsSync.writeFileSync(cmdPyPath, content, 'utf8');
+        logger.info(`已修复 gitpython endswith 兼容性问题: ${cmdPyPath}`);
+      }
+    } catch (err) {
+      const error = err as Error | null;
+      const errorMessage = error?.message ?? '未知错误';
+      logger.warn(`修复 gitpython 兼容性失败: ${errorMessage}`);
     }
   }
 
@@ -499,6 +528,9 @@ comfyui_portable:
       // 部署 sitecustomize.py 到 Python 的 site-packages 目录
       // 此文件会在 Python 启动时自动加载，修复 subprocess 的 UnicodeDecodeError
       this._deploySitecustomize(sitecustomizeDir);
+
+      // 修复 gitpython 的 str/bytes endswith TypeError (Python 3.13+)
+      this._patchGitpython(sitecustomizeDir);
 
       // 启动进程
       this._process = spawn(pythonPath, fullArgs, {

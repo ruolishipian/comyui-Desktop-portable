@@ -1,27 +1,30 @@
 """
 sitecustomize.py - Python 启动时自动加载的站点自定义模块
 
-此模块解决两个兼容性问题：
+此模块解决 Windows 中文系统上 ComfyUI 及其插件（如 ComfyUI-Manager）
+在调用 subprocess 时因编码不匹配导致的 UnicodeDecodeError 问题。
 
-1. Windows 中文系统 subprocess UnicodeDecodeError
-   当设置 PYTHONUTF8=1 后，Python 的 subprocess 模块在 text=True 模式下
-   使用 UTF-8 解码子进程输出。但 Windows 上的原生程序（git、pip 等）输出
-   使用系统本地编码（GBK/cp936），导致 UTF-8 解码失败：
-     UnicodeDecodeError: 'utf-8' codec can't decode byte 0xb2 in position 7
-   修复：Monkey-patch subprocess.Popen，自动添加 errors='replace'。
+问题原因：
+  当设置 PYTHONUTF8=1 后，Python 的 subprocess 模块在 text=True 模式下
+  使用 UTF-8 解码子进程输出。但 Windows 上的原生程序（git、pip 等）输出
+  使用系统本地编码（GBK/cp936），导致 UTF-8 解码失败：
+    UnicodeDecodeError: 'utf-8' codec can't decode byte 0xb2 in position 7
 
-2. gitpython str/bytes endswith TypeError (Python 3.13+)
-   gitpython 的 Git.execute() 中使用 stdout_value.endswith(newline)，
-   但 stdout_value 可能是 str 而 newline 是 bytes（或反之），导致：
-     TypeError: endswith first arg must be str or a tuple of str, not bytes
-   修复：在 Python 启动时直接 import git.cmd 并 patch Git.execute。
-   此修复在 gitpython 升级后仍然生效，无需重新 patch 源码。
+修复方式：
+  Monkey-patch subprocess.Popen，在创建文本模式管道时自动添加 errors='replace'，
+  使解码遇到无效字节时用替换字符（�）代替，而非抛出异常。
+  这与 Python 3.7+ 的 subprocess errors 参数行为一致。
+
+注意：
+  gitpython 的 str/bytes endswith TypeError 修复由启动器在每次启动时
+  自动 patch git/cmd.py 源码来实现（见 _patchGitpython 方法），
+  因为 git/cmd.py 的顶层 import 会触发 git/__init__.py 的 refresh()，
+  无法通过运行时 monkey-patch 在 refresh() 之前生效。
 """
 
 import subprocess
 import sys
 
-# ========== 修复 1: subprocess UnicodeDecodeError ==========
 # 仅在 Windows 上且启用了 UTF-8 模式时需要修复
 if sys.platform == 'win32' and sys.flags.utf8_mode:
     _original_popen_init = subprocess.Popen.__init__
@@ -36,44 +39,3 @@ if sys.platform == 'win32' and sys.flags.utf8_mode:
 
     # 应用 monkey-patch
     subprocess.Popen.__init__ = _patched_popen_init
-
-
-# ========== 修复 2: gitpython str/bytes endswith TypeError ==========
-# 直接在启动时 import git.cmd 并 patch，确保在任何代码调用
-# Git.execute() 之前 patch 已生效。
-try:
-    import git.cmd as _git_cmd
-except (ImportError, TypeError):
-    pass
-else:
-    if not getattr(_git_cmd, '_endswith_compat_patched', False):
-        def _safe_endswith(value, suffix):
-            """Type-safe endswith that handles str/bytes mismatch."""
-            if isinstance(value, bytes) and isinstance(suffix, bytes):
-                return value.endswith(suffix)
-            if isinstance(value, str) and isinstance(suffix, str):
-                return value.endswith(suffix)
-            return False
-
-        _orig_execute = _git_cmd.Git.execute
-
-        def _patched_execute(self, *args, **kwargs):
-            try:
-                return _orig_execute(self, *args, **kwargs)
-            except TypeError as e:
-                if "endswith" not in str(e):
-                    raise
-                # endswith TypeError: stdout_value 和 newline 类型不匹配
-                # 跳过有问题的 newline 剥离逻辑，手动安全处理
-                kwargs2 = dict(kwargs)
-                kwargs2['strip_newline_in_stdout'] = False
-                result = _orig_execute(self, *args, **kwargs2)
-                # 手动剥离尾部换行
-                if isinstance(result, (str, bytes)):
-                    nl = b"\n" if isinstance(result, bytes) else "\n"
-                    if _safe_endswith(result, nl):
-                        result = result[:-1]
-                return result
-
-        _git_cmd.Git.execute = _patched_execute
-        _git_cmd._endswith_compat_patched = True
