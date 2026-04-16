@@ -76,15 +76,32 @@
   WriteRegStr SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "DisplayIcon" "$INSTDIR\${MAIN_EXE},0"
 
   ; 刷新 Windows 图标缓存，防止重启后图标丢失
+  ; 问题: Windows 10+ 使用新的图标缓存格式 (iconcache_*.db)，
+  ; 旧的 ie4uinit.exe 和删除 IconCache.db 无法清除新格式缓存，
+  ; 导致安装后资源管理器中 EXE 图标显示为白板
   DetailPrint "正在刷新图标缓存..."
+
+  ; 1. 使用 ie4uinit.exe 刷新旧格式缓存 (Windows 7 兼容)
   ExecWait 'ie4uinit.exe -show'
   ExecWait 'ie4uinit.exe -ClearLocalIconCache'
-  ; 强制刷新系统图标缓存
+
+  ; 2. 删除旧格式图标缓存文件
   SetShellVarContext current
   Delete "$APPDATA\Microsoft\Windows\IconCache.db"
   Delete "$LOCALAPPDATA\Microsoft\Windows\IconCache.db"
   Delete "$LOCALAPPDATA\IconCache.db"
-  DetailPrint "图标缓存已刷新"
+
+  ; 3. 删除 Windows 10+ 新格式图标缓存文件 (iconcache_*.db)
+  ; 这些文件是资源管理器实际使用的图标缓存，不删除它们会导致白板图标
+  ; 资源管理器会在下次启动时自动重建这些文件
+  Delete "$LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache_*.db"
+  Delete "$LOCALAPPDATA\Microsoft\Windows\Explorer\IconCache.db"
+
+  ; 4. 通知系统图标缓存已更改 (SHChangeNotify)
+  ; SHCNE_ASSOCCHANGED = 0x08000000, SHCNF_IDLIST = 0
+  System::Call 'Shell32::SHChangeNotify(i 0x08000000, i 0, i 0, i 0)'
+
+  DetailPrint "图标缓存已刷新（含 Windows 10+ 新格式缓存）"
 
   ; 清理备份目录
   RMDir /r "${BACKUP_DIR}"
