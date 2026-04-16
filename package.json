@@ -1,6 +1,6 @@
 {
   "name": "comfyui-portable-desktop",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "ComfyUI 便携桌面版 - TypeScript 模块化架构",
   "main": "dist/src/main.js",
   "scripts": {
