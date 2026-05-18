@@ -50,6 +50,7 @@ nsis:
   perMachine: false
   allowToChangeInstallationDirectory: true
   allowElevation: true
+  differentialPackage: false
   # 快捷方式配置 - 确保图标正确关联
   createDesktopShortcut: always
   createStartMenuShortcut: true
@@ -88,6 +89,9 @@ extraResources:
 
 # 打包后钩子 - 过滤语言文件
 afterPack: ./scripts/filter-languages-hook.js
+
+# 签名后钩子 - 用 rcedit 重新嵌入图标（修复 app-builder alpha 版崩溃导致图标丢失）
+afterSign: ./scripts/embed-icon-hook.js
 
 # 发布配置
 publish: null

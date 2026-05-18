@@ -1,15 +1,15 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo   修复 Windows 图标缓存问题
+echo   修复 Windows 图标缓存问题 (Win10/11 适配)
 echo ========================================
 echo.
 echo 此脚本将：
-echo 1. 停止 Windows 资源管理器
+echo 1. 停止 Windows 资源管理器（释放文件锁）
 echo 2. 删除旧格式图标缓存 (IconCache.db)
-echo 3. 删除 Windows 10+ 新格式图标缓存 (iconcache_*.db)
-echo 4. 删除缩略图缓存
-echo 5. 重启资源管理器
+echo 3. 删除 Windows 10/11 新格式图标缓存 (iconcache_*.db)
+echo 4. 删除缩略图缓存 (thumbcache_*.db)
+echo 5. 重启资源管理器（自动重建缓存）
 echo.
 echo 注意：资源管理器会暂时关闭，请保存所有工作
 echo.

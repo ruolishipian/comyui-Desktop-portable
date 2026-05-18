@@ -37,16 +37,11 @@ app.commandLine.appendSwitch('disable-electron-zoom-controls'); // 禁用 Electr
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.comfyui.portable-desktop');
 
-  // 启动时刷新图标缓存，解决安装后资源管理器中 EXE 图标显示为白板的问题
-  // 原因: Windows 10+ 的图标缓存 (iconcache_*.db) 可能未正确索引新安装的 EXE 图标
-  // ie4uinit.exe -show 会触发系统重新读取 EXE 中的图标资源
+  // 启动时刷新图标缓存（SHChangeNotify 通知系统关联已变更）
+  // 当 EXE 内嵌图标正确时，此操作确保系统刷新图标显示
   import('child_process').then(({ exec }) => {
-    exec('ie4uinit.exe -show', { windowsHide: true }, () => {
-      // 忽略错误，此操作是尽力而为
-    });
-  }).catch(() => {
-    // 忽略
-  });
+    exec('ie4uinit.exe -show', { windowsHide: true }, () => {});
+  }).catch(() => {});
 }
 
 // 全局退出标记
