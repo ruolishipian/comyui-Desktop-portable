@@ -1,6 +1,7 @@
 /**
  * 日志管理模块
  * 集中管理日志记录、轮转、清理
+ * 统一单通道写入，级别判断由 log-parser 负责
  */
 
 import fs from 'fs';
@@ -13,47 +14,36 @@ import { LogLevel } from '../types';
 
 import { configManager } from './config';
 
-// 日志级别优先级
 const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
   error: 0,
   warn: 1,
   info: 2
 };
 
-// ANSI 转义码正则表达式
-const ANSI_CODES_REGEX = /[\u001B\u009B][#();?[]*(?:\d{1,4}(?:;\d{0,4})*)?[\d<=>A-ORZcf-nqry]/g;
-
-// 日志管理器
 export class Logger {
   private _buffer: string = '';
   private _timer: NodeJS.Timeout | null = null;
   private _logWindow: BrowserWindow | null = null;
   private _initialized: boolean = false;
-  private _maxBufferSize: number = 1024 * 1024; // 1MB 缓冲区上限
+  private _maxBufferSize: number = 1024 * 1024;
   private _writeQueue: string[] = [];
   private _isWriting: boolean = false;
   private _lastRotateCheck: number = 0;
-  private readonly _rotateCheckInterval: number = 60000; // 1分钟检查一次轮转
+  private readonly _rotateCheckInterval: number = 60000;
 
-  // ComfyUI 独立日志文件
   private _comfyUILogFile: string = '';
   private _comfyUIWriteQueue: string[] = [];
   private _isComfyUIWriting: boolean = false;
+  private _lastComfyUIRotateCheck: number = 0;
+  private readonly _comfyUIRotateCheckInterval: number = 60000;
+  private readonly _comfyUILogMaxSize: number = 50 * 1024 * 1024;
 
-  // 会话日志缓存 - 存储本次会话的所有日志
   private _sessionLogCache: string = '';
-  private readonly _maxSessionLogSize: number = 5 * 1024 * 1024; // 5MB 会话日志上限
+  private readonly _maxSessionLogSize: number = 5 * 1024 * 1024;
 
-  // 清理 ANSI 转义码
-  private _removeAnsiCodes(text: string): string {
-    return text.replace(ANSI_CODES_REGEX, '');
-  }
-
-  // 初始化
   public init(): void {
     this._initialized = true;
 
-    // 确保日志目录存在
     const logsDir = configManager.logsDir;
     if (logsDir && !fs.existsSync(logsDir)) {
       try {
@@ -64,10 +54,8 @@ export class Logger {
       }
     }
 
-    // 初始化 ComfyUI 独立日志文件
     this._comfyUILogFile = path.join(configManager.logsDir, 'comfyui-output.log');
 
-    // 确保今日日志文件存在
     const todayLogFile = this.getTodayLogFile();
     if (!fs.existsSync(todayLogFile)) {
       try {
@@ -78,16 +66,15 @@ export class Logger {
       }
     }
 
-    // 启动时执行日志轮转
     this._rotateLogs();
+    void this._cleanOldComfyUILogs();
   }
 
-  // 日志轮转 - 删除过期日志和超出数量的日志
   private _rotateLogs(): void {
     try {
       const logConfig = configManager.logs;
       const keepDays = logConfig.keepDays ?? 7;
-      const maxFiles = 50; // 最多保留50个日志文件
+      const maxFiles = 50;
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - keepDays);
 
@@ -114,11 +101,10 @@ export class Logger {
           }
         })
         .filter((info): info is NonNullable<typeof info> => info !== null && info.isFile)
-        .sort((a, b) => b.mtime - a.mtime); // 按修改时间降序
+        .sort((a, b) => b.mtime - a.mtime);
 
       let deletedCount = 0;
 
-      // 1. 删除超过数量的日志（保留最新的 maxFiles 个）
       if (logFileInfos.length > maxFiles) {
         const filesToDelete = logFileInfos.slice(maxFiles);
         filesToDelete.forEach(file => {
@@ -126,19 +112,18 @@ export class Logger {
             fs.unlinkSync(file.path);
             deletedCount++;
           } catch {
-            // 忽略单个文件删除错误
+            // 忽略
           }
         });
       }
 
-      // 2. 删除超过天数的日志
       logFileInfos.forEach(file => {
         if (file.mtime < cutoffDate.getTime()) {
           try {
             fs.unlinkSync(file.path);
             deletedCount++;
           } catch {
-            // 忽略单个文件删除错误
+            // 忽略
           }
         }
       });
@@ -147,73 +132,63 @@ export class Logger {
         console.log(`日志轮转完成，删除了 ${deletedCount} 个日志文件`);
       }
     } catch (err) {
-      // 忽略轮转错误，不影响正常使用
       console.warn('日志轮转失败:', err);
     }
   }
 
-  // 设置日志窗口引用
   public setLogWindow(window: BrowserWindow | null): void {
     this._logWindow = window;
   }
 
-  // 获取今日日志文件路径
   public getTodayLogFile(): string {
     const date = new Date().toISOString().slice(0, 10);
     return path.join(configManager.logsDir, `comfyui-${date}.log`);
   }
 
-  // 写入日志
+  /**
+   * 统一日志写入入口
+   * 级别判断已由 log-parser 完成，此处仅做级别过滤和格式化
+   */
   public log(content: string, level: LogLevel = 'info'): void {
     if (!this._initialized) return;
 
     const logConfig = configManager.logs;
     if (!logConfig.enable) return;
 
-    // 检查日志级别（如果未配置则默认为 info）
     const configLevel = logConfig.level ?? 'info';
     if (LOG_LEVEL_PRIORITY[level] > LOG_LEVEL_PRIORITY[configLevel]) {
       return;
     }
 
-    // 清理 ANSI 转义码
-    const cleanContent = this._removeAnsiCodes(content);
-
-    // 处理多行输出：为每一行都添加时间戳
     const timestamp = new Date().toLocaleTimeString();
-    const lines = cleanContent.split('\n');
-    const logLine = lines.map(line => `[${timestamp}] [${level}] ${line}`).join('\n') + '\n';
+    const logLine = `[${timestamp}] [${level}] ${content}\n`;
 
-    // 更新会话日志缓存
     if (this._sessionLogCache.length < this._maxSessionLogSize) {
       this._sessionLogCache += logLine;
     } else {
-      // 会话缓存已满,删除最旧的日志
-      const lines = this._sessionLogCache.split('\n');
-      const keepLines = Math.floor(lines.length * 0.8); // 保留80%
-      this._sessionLogCache = lines.slice(-keepLines).join('\n') + logLine;
+      const cacheLines = this._sessionLogCache.split('\n');
+      const keepLines = Math.floor(cacheLines.length * 0.8);
+      this._sessionLogCache = cacheLines.slice(-keepLines).join('\n') + logLine;
     }
 
-    // 节流处理 - 限制缓冲区大小
     if (this._buffer.length < this._maxBufferSize) {
       this._buffer += logLine;
     } else {
-      // 缓冲区已满，强制刷新
       this._flushBuffer();
       this._buffer = logLine;
     }
     this._scheduleFlush();
 
-    // 异步写入文件（使用队列）
     this._queueWrite(logLine);
 
-    // 开发模式输出到控制台
+    // 同时写入 ComfyUI 独立日志（原始内容，无级别标签）
+    this._queueComfyUIWrite(`[${timestamp}] ${content}\n`);
+
     if (!app.isPackaged) {
       console.log(logLine.trim());
     }
   }
 
-  // 快捷方法
   public error(content: string): void {
     this.log(content, 'error');
   }
@@ -226,7 +201,6 @@ export class Logger {
     this.log(content, 'info');
   }
 
-  // 调度刷新缓冲区
   private _scheduleFlush(): void {
     if (this._timer) return;
 
@@ -237,11 +211,9 @@ export class Logger {
     }, throttle);
   }
 
-  // 刷新缓冲区
   private _flushBuffer(): void {
     if (!this._buffer) return;
 
-    // 推送到日志窗口
     if (this._logWindow && !this._logWindow.isDestroyed() && this._logWindow.isVisible()) {
       const logConfig = configManager.logs;
       if (logConfig.realtime) {
@@ -252,17 +224,14 @@ export class Logger {
     this._buffer = '';
   }
 
-  // 写入文件
   private async _writeToFile(logLine: string): Promise<void> {
     try {
-      // 减少轮转检查频率
       const now = Date.now();
       if (now - this._lastRotateCheck > this._rotateCheckInterval) {
         await this._rotateLogFile();
         this._lastRotateCheck = now;
       }
 
-      // 使用异步写入
       await fs.promises.appendFile(this.getTodayLogFile(), logLine, 'utf8');
     } catch (err) {
       const error = err as Error;
@@ -270,7 +239,6 @@ export class Logger {
     }
   }
 
-  // 队列写入（避免并发写入）
   private _queueWrite(logLine: string): void {
     this._writeQueue.push(logLine);
     if (!this._isWriting) {
@@ -278,7 +246,6 @@ export class Logger {
     }
   }
 
-  // 处理写入队列
   private async _processWriteQueue(): Promise<void> {
     if (this._writeQueue.length === 0) {
       this._isWriting = false;
@@ -292,20 +259,18 @@ export class Logger {
       await this._writeToFile(logLine);
     }
 
-    // 继续处理队列
     void setImmediate(() => {
       void this._processWriteQueue();
     });
   }
 
-  // 日志轮转
   private async _rotateLogFile(): Promise<void> {
     const logFile = this.getTodayLogFile();
     const logConfig = configManager.logs;
 
     try {
       const stats = await fs.promises.stat(logFile);
-      const maxSize = logConfig.maxSize ?? 10 * 1024 * 1024; // 默认 10MB
+      const maxSize = logConfig.maxSize ?? 10 * 1024 * 1024;
       if (stats.size > maxSize) {
         const timestamp = Date.now();
         await fs.promises.rename(logFile, `${logFile}.${timestamp}`);
@@ -319,10 +284,9 @@ export class Logger {
     }
   }
 
-  // 清理过期日志
   private async _cleanOldLogs(): Promise<void> {
     const logConfig = configManager.logs;
-    const keepDays = logConfig.keepDays ?? 7; // 默认保留 7 天
+    const keepDays = logConfig.keepDays ?? 7;
     const cutoff = Date.now() - keepDays * 24 * 60 * 60 * 1000;
 
     try {
@@ -342,7 +306,6 @@ export class Logger {
     }
   }
 
-  // 读取日志内容
   public async readLogContent(): Promise<string> {
     const logFile = this.getTodayLogFile();
     try {
@@ -353,7 +316,6 @@ export class Logger {
     }
   }
 
-  // 清空日志
   public async clearLog(): Promise<boolean> {
     const logFile = this.getTodayLogFile();
     try {
@@ -369,24 +331,13 @@ export class Logger {
 
   // ========== ComfyUI 独立日志 ==========
 
-  // 记录 ComfyUI 输出（独立日志文件）
-  public logComfyUIOutput(data: string): void {
-    if (!this._initialized || !this._comfyUILogFile) return;
-
-    const cleanData = this._removeAnsiCodes(data);
-    // 处理多行输出：为每一行都添加时间戳
-    const timestamp = new Date().toLocaleTimeString();
-    const lines = cleanData.split('\n');
-    const line = lines.map(l => `[${timestamp}] ${l}`).join('\n') + '\n';
-
-    // 加入队列
+  private _queueComfyUIWrite(line: string): void {
     this._comfyUIWriteQueue.push(line);
     if (!this._isComfyUIWriting) {
       void this._processComfyUIWriteQueue();
     }
   }
 
-  // 处理 ComfyUI 日志写入队列
   private async _processComfyUIWriteQueue(): Promise<void> {
     if (this._comfyUIWriteQueue.length === 0) {
       this._isComfyUIWriting = false;
@@ -398,6 +349,12 @@ export class Logger {
 
     if (line !== undefined && this._comfyUILogFile) {
       try {
+        const now = Date.now();
+        if (now - this._lastComfyUIRotateCheck > this._comfyUIRotateCheckInterval) {
+          await this._rotateComfyUILogFile();
+          this._lastComfyUIRotateCheck = now;
+        }
+
         await fs.promises.appendFile(this._comfyUILogFile, line, 'utf8');
       } catch (err) {
         const error = err as Error;
@@ -405,13 +362,88 @@ export class Logger {
       }
     }
 
-    // 继续处理队列
     void setImmediate(() => {
       void this._processComfyUIWriteQueue();
     });
   }
 
-  // 读取 ComfyUI 日志内容
+  private async _rotateComfyUILogFile(): Promise<void> {
+    if (!this._comfyUILogFile) return;
+
+    try {
+      const stats = await fs.promises.stat(this._comfyUILogFile);
+      if (stats.size > this._comfyUILogMaxSize) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const rotatedFile = this._comfyUILogFile.replace('.log', `_${timestamp}.log`);
+
+        await fs.promises.rename(this._comfyUILogFile, rotatedFile);
+        console.log(`[Logger] ComfyUI 日志轮转: ${path.basename(this._comfyUILogFile)} -> ${path.basename(rotatedFile)}`);
+
+        await fs.promises.writeFile(this._comfyUILogFile, '', 'utf8');
+        await this._cleanOldComfyUILogs();
+      }
+    } catch (err) {
+      const error = err as NodeJS.ErrnoException;
+      if (error.code !== 'ENOENT') {
+        console.error('[Logger] ComfyUI 日志轮转失败:', error.message);
+      }
+    }
+  }
+
+  private async _cleanOldComfyUILogs(): Promise<void> {
+    const logConfig = configManager.logs;
+    const keepDays = logConfig.keepDays ?? 7;
+    const cutoff = Date.now() - keepDays * 24 * 60 * 60 * 1000;
+    const maxFiles = 10;
+
+    try {
+      const logsDir = configManager.logsDir;
+      const files = await fs.promises.readdir(logsDir);
+      const comfyUILogs: Array<{ name: string; path: string; mtime: number }> = [];
+      for (const file of files) {
+        if (file.startsWith('comfyui-output_') && file.endsWith('.log')) {
+          const filePath = path.join(logsDir, file);
+          const stats = await fs.promises.stat(filePath);
+          comfyUILogs.push({
+            name: file,
+            path: filePath,
+            mtime: stats.mtime.getTime()
+          });
+        }
+      }
+
+      comfyUILogs.sort((a, b) => b.mtime - a.mtime);
+
+      let deletedCount = 0;
+
+      if (comfyUILogs.length > maxFiles) {
+        const filesToDelete = comfyUILogs.slice(maxFiles);
+        for (const file of filesToDelete) {
+          await fs.promises.unlink(file.path);
+          deletedCount++;
+        }
+      }
+
+      for (const file of comfyUILogs) {
+        if (file.mtime < cutoff) {
+          try {
+            await fs.promises.unlink(file.path);
+            deletedCount++;
+          } catch {
+            // 忽略
+          }
+        }
+      }
+
+      if (deletedCount > 0) {
+        console.log(`[Logger] 清理 ComfyUI 旧日志完成，删除了 ${deletedCount} 个文件`);
+      }
+    } catch (err) {
+      const error = err as Error;
+      console.error('[Logger] 清理 ComfyUI 旧日志失败:', error.message);
+    }
+  }
+
   public async readComfyUILogContent(): Promise<string> {
     if (!this._comfyUILogFile) return '';
     try {
@@ -422,7 +454,6 @@ export class Logger {
     }
   }
 
-  // 清空 ComfyUI 日志
   public async clearComfyUILog(): Promise<boolean> {
     if (!this._comfyUILogFile) return false;
     try {
@@ -437,16 +468,13 @@ export class Logger {
 
   // ========== 会话日志管理 ==========
 
-  // 获取会话日志缓存
   public getSessionLog(): string {
     return this._sessionLogCache;
   }
 
-  // 清空会话日志缓存（应用退出时调用）
   public clearSessionLog(): void {
     this._sessionLogCache = '';
   }
 }
 
-// 导出单例
 export const logger = new Logger();

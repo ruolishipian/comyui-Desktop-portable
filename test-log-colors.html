@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>日志颜色测试</title>
+    <style>
+      body {
+        background: #1a1a1a;
+        color: #fff;
+        font-family: Consolas, 'Courier New', monospace;
+        padding: 20px;
+      }
+      .log-container {
+        background: #0f0f0f;
+        padding: 10px;
+        border-radius: 4px;
+        white-space: pre-wrap;
+      }
+      .log-error {
+        color: #ef4444;
+      }
+      .log-warn {
+        color: #f59e0b;
+      }
+      .log-info {
+        color: #60a5fa;
+      }
+      .log-debug {
+        color: #9ca3af;
+      }
+      .test-section {
+        margin-bottom: 30px;
+      }
+      h2 {
+        color: #60a5fa;
+        margin-bottom: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>日志颜色测试</h1>
+    
+    <div class="test-section">
+      <h2>1. CSS 类测试（应该显示颜色）</h2>
+      <div class="log-container">
+        <span class="log-error">这是错误信息 - 应该是红色</span><br>
+        <span class="log-warn">这是警告信息 - 应该是黄色</span><br>
+        <span class="log-info">这是普通信息 - 应该是蓝色</span><br>
+        <span class="log-debug">这是调试信息 - 应该是灰色</span>
+      </div>
+    </div>
+    
+    <div class="test-section">
+      <h2>2. 格式化函数测试</h2>
+      <div class="log-container" id="test-output"></div>
+    </div>
+    
+    <div class="test-section">
+      <h2>3. 实际日志格式测试</h2>
+      <div class="log-container" id="real-log-test"></div>
+    </div>
+
+    <script>
+      // 格式化日志函数（从 log.html 复制）
+      function formatLog(content) {
+        if (!content) return '';
+        return content
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          // 匹配带时间戳和级别的日志
+          .replace(/\[(\d{2}:\d{2}:\d{2})\] \[error\] (.*)/g, '<span class="log-error">[$1] [错误] $2</span>')
+          .replace(/\[(\d{2}:\d{2}:\d{2})\] \[warn\] (.*)/g, '<span class="log-warn">[$1] [警告] $2</span>')
+          .replace(/\[(\d{2}:\d{2}:\d{2})\] \[info\] (.*)/g, '<span class="log-info">[$1] [信息] $2</span>')
+          .replace(/\[(\d{2}:\d{2}:\d{2})\] \[debug\] (.*)/g, '<span class="log-debug">[$1] [调试] $2</span>')
+          // 匹配只有时间戳的日志（ComfyUI 原始输出）
+          .replace(/\[(\d{2}:\d{2}:\d{2})\] ([^\[].*)/g, '<span class="log-info">[$1] [信息] $2</span>')
+          .replace(/\n/g, '<br>');
+      }
+      
+      // 测试格式化函数
+      const testLog = `[01:23:07] [info] 开始环境自检...
+[01:23:07] [info] ComfyUI便携桌面版启动
+[01:26:11] [error] 服务器启动超时: Timed out waiting for...
+[01:26:24] [warn] ComfyUI进程退出，PID：unknown，码：?
+[01:26:24] [warn] 进程退出时状态已为失败，跳过自动重启
+[01:26:10] [info] Starting server
+[01:26:10] [info] To see the GUI go to: http://127.0.0.1:8188`;
+      
+      document.getElementById('test-output').innerHTML = formatLog(testLog);
+      
+      // 测试实际日志
+      const realLog = `[01:26:10] [info]    1.9 seconds: D:\\ai\\ComfyUI\\ComfyUI\\custom_nodes\\comfyui-impact-subpack
+[01:26:11] [error] 服务器启动超时: Timed out waiting for: http://127.0.0.1:8188/queue
+[01:26:24] [warn] ComfyUI进程退出，PID：unknown，码：?
+[01:26:24] [info] 进程已杀死`;
+      
+      document.getElementById('real-log-test').innerHTML = formatLog(realLog);
+      
+      // 调试：输出正则匹配结果
+      console.log('测试日志:', testLog);
+      console.log('格式化后:', formatLog(testLog));
+    </script>
+  </body>
+</html>

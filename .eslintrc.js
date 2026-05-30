@@ -61,7 +61,9 @@ module.exports = {
       { selector: 'parameter', format: ['camelCase'], leadingUnderscore: 'allow' },
       { selector: 'property', format: ['camelCase', 'UPPER_CASE'], leadingUnderscore: 'allow' },
       { selector: 'memberLike', modifiers: ['private'], format: ['camelCase'], leadingUnderscore: 'require' },
-      { selector: 'typeLike', format: ['PascalCase'] }
+      { selector: 'typeLike', format: ['PascalCase'] },
+      // 对象字面量属性 key 常为字符串/常量，不强制命名规范
+      { selector: 'objectLiteralProperty', format: null }
     ],
 
     '@typescript-eslint/member-delimiter-style': [
@@ -75,7 +77,6 @@ module.exports = {
     '@typescript-eslint/quotes': ['error', 'single', { avoidEscape: true }],
     '@typescript-eslint/comma-dangle': ['error', 'never'],
     '@typescript-eslint/brace-style': ['error', '1tbs', { allowSingleLine: true }],
-    '@typescript-eslint/indent': ['error', 2, { SwitchCase: 1 }],
 
     // ========== 未使用变量 ==========
     '@typescript-eslint/no-unused-vars': [
@@ -167,7 +168,6 @@ module.exports = {
     'scripts/**',
     '.eslintrc.js',
     'reports/**',
-    'test/**',
     '**/*.js'
   ]
 };

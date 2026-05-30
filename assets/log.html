@@ -67,6 +67,9 @@
         background: #333;
         border-radius: 4px;
       }
+      .log-line {
+        min-height: 1.5em;
+      }
       .log-error {
         color: #ef4444;
       }
@@ -75,9 +78,6 @@
       }
       .log-info {
         color: #60a5fa;
-      }
-      .log-debug {
-        color: #9ca3af;
       }
       .status-bar {
         margin-top: 10px;
@@ -143,7 +143,7 @@
         自动滚动
       </label>
     </div>
-    <div class="log-container" id="log-content">加载中...</div>
+    <div class="log-container" id="log-content"></div>
     <div class="status-bar">
       <div class="status-item">
         <div class="status-dot" id="status-dot"></div>
@@ -169,84 +169,134 @@
       const updateTime = document.getElementById('update-time');
       const autoScrollCheckbox = document.getElementById('autoScroll');
 
-      // 会话日志缓存 - 存储本次会话的所有日志
-      let sessionLogCache = '';
+      const MAX_LINES = 5000;
 
-      // 初始化 - 加载会话日志缓存
+      // 中文级别映射
+      const LEVEL_TEXT = {
+        error: '错误',
+        warn: '警告',
+        info: '信息'
+      };
+
+      // HTML 转义
+      function escapeHtml(text) {
+        return text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      }
+
+      // 解析单行日志 → { timestamp, level, message }
+      function parseLine(line) {
+        // 格式: [HH:MM:SS] [level] message
+        const match = line.match(/^\[(\d{2}:\d{2}:\d{2})\] \[(error|warn|info)\] (.*)$/);
+        if (match) {
+          return { timestamp: match[1], level: match[2], message: match[3] };
+        }
+        // 兜底：只有时间戳
+        const simpleMatch = line.match(/^\[(\d{2}:\d{2}:\d{2})\] (.*)$/);
+        if (simpleMatch) {
+          return { timestamp: simpleMatch[1], level: 'info', message: simpleMatch[2] };
+        }
+        // 无时间戳
+        return { timestamp: '', level: 'info', message: line };
+      }
+
+      // 创建一行 DOM 元素
+      function createLogLineElement(entry) {
+        const div = document.createElement('div');
+        div.className = 'log-line log-' + entry.level;
+        const levelText = LEVEL_TEXT[entry.level] || '信息';
+        div.textContent = '[' + entry.timestamp + '] [' + levelText + '] ' + entry.message;
+        return div;
+      }
+
+      // 批量追加日志（使用 DocumentFragment，避免逐行重排）
+      function appendLogBatch(text) {
+        const lines = text.split('\n').filter(l => l.trim());
+        if (lines.length === 0) return;
+
+        const fragment = document.createDocumentFragment();
+        for (const line of lines) {
+          const entry = parseLine(line);
+          fragment.appendChild(createLogLineElement(entry));
+        }
+        logContent.appendChild(fragment);
+
+        // 超过最大行数时，移除旧行
+        trimOldLines();
+        scrollToBottom();
+      }
+
+      // 追加单条 IPC 日志数据
+      function appendLog(data) {
+        appendLogBatch(data);
+      }
+
+      // 限制行数
+      function trimOldLines() {
+        while (logContent.childElementCount > MAX_LINES) {
+          logContent.removeChild(logContent.firstChild);
+        }
+      }
+
+      // 初始化
       window.addEventListener('DOMContentLoaded', async () => {
-        // 从主进程获取会话日志缓存
         if (window.comfyuiDesktop && window.comfyuiDesktop.getSessionLog) {
           try {
-            sessionLogCache = await window.comfyuiDesktop.getSessionLog();
+            const sessionLogCache = await window.comfyuiDesktop.getSessionLog();
             if (sessionLogCache) {
-              logContent.innerHTML = formatLog(sessionLogCache);
-              scrollToBottom();
+              appendLogBatch(sessionLogCache);
             } else {
-              logContent.innerHTML = '<span class="log-info">日志窗口已打开，等待新日志...</span><br>';
+              appendPlaceholder();
             }
-          } catch (err) {
-            logContent.innerHTML = '<span class="log-info">日志窗口已打开，等待新日志...</span><br>';
+          } catch {
+            appendPlaceholder();
           }
         } else {
-          logContent.innerHTML = '<span class="log-info">日志窗口已打开，等待新日志...</span><br>';
+          appendPlaceholder();
         }
 
-        // 监听日志更新
         if (window.electronAPI) {
           window.electronAPI.on('logUpdate', (_, data) => {
             appendLog(data);
             updateTimestamp();
           });
 
-          // 监听状态更新
           window.electronAPI.on('statusUpdate', (_, data) => {
             updateStatus(data);
           });
         }
       });
 
+      function appendPlaceholder() {
+        const div = document.createElement('div');
+        div.className = 'log-line log-info';
+        div.textContent = '日志窗口已打开，等待新日志...';
+        logContent.appendChild(div);
+      }
+
       // 刷新日志
       async function refreshLog() {
         try {
           const content = await window.comfyuiDesktop.getLogContent();
-          logContent.innerHTML = formatLog(content);
-          scrollToBottom();
+          logContent.innerHTML = '';
+          appendLogBatch(content);
           updateTimestamp();
         } catch (err) {
           logContent.textContent = '加载日志失败：' + err.message;
         }
       }
 
-      // 追加日志
-      function appendLog(data) {
-        // 更新会话缓存
-        sessionLogCache += data;
-        logContent.innerHTML += formatLog(data);
-        scrollToBottom();
-      }
-
-      // 格式化日志（按级别上色）
-      function formatLog(content) {
-        if (!content) return '';
-        return content
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          // 匹配带时间戳和级别的日志
-          .replace(/\[(\d{2}:\d{2}:\d{2})\] \[error\] (.*)/g, '<span class="log-error">[$1] [错误] $2</span>')
-          .replace(/\[(\d{2}:\d{2}:\d{2})\] \[warn\] (.*)/g, '<span class="log-warn">[$1] [警告] $2</span>')
-          .replace(/\[(\d{2}:\d{2}:\d{2})\] \[info\] (.*)/g, '<span class="log-info">[$1] [信息] $2</span>')
-          .replace(/\[(\d{2}:\d{2}:\d{2})\] \[debug\] (.*)/g, '<span class="log-debug">[$1] [调试] $2</span>')
-          // 匹配只有时间戳的日志（ComfyUI 原始输出）
-          .replace(/\[(\d{2}:\d{2}:\d{2})\] ([^\[].*)/g, '<span class="log-info">[$1] [信息] $2</span>')
-          .replace(/\n/g, '<br>');
-      }
-
       // 清空日志
       async function clearLog() {
         const result = await window.comfyuiDesktop.clearLog();
         if (result) {
-          logContent.innerHTML = '<span class="log-info">日志已清空</span><br>';
+          logContent.innerHTML = '';
+          const div = document.createElement('div');
+          div.className = 'log-line log-info';
+          div.textContent = '日志已清空';
+          logContent.appendChild(div);
           updateTimestamp();
         }
       }
@@ -258,7 +308,7 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `comfyui-log-${new Date().toISOString().slice(0, 10)}.log`;
+        a.download = 'comfyui-log-' + new Date().toISOString().slice(0, 10) + '.log';
         a.click();
         URL.revokeObjectURL(url);
       }
@@ -281,24 +331,18 @@
         updateTimestamp();
       }
 
-      // 更新时间戳
       function updateTimestamp() {
         updateTime.textContent = new Date().toLocaleTimeString();
       }
 
-      // 滚动到底部
       function scrollToBottom() {
         if (autoScrollCheckbox.checked) {
           logContent.scrollTop = logContent.scrollHeight;
         }
       }
 
-      // 监听滚动，自动调整自动滚动状态
       logContent.addEventListener('scroll', () => {
-        const isAtBottom = logContent.scrollTop + logContent.clientHeight >= logContent.scrollHeight - 20;
-        if (!isAtBottom && autoScrollCheckbox.checked) {
-          // 用户手动向上滚动时，不自动取消勾选，让用户自己控制
-        }
+        // 用户手动滚动时不自动取消勾选
       });
     </script>
   </body>

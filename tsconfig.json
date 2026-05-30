@@ -51,5 +51,5 @@
     "types": ["node", "jest", "electron"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "test/**/*.tsx", "test/types/**/*.d.ts"],
-  "exclude": ["node_modules", "dist", "assets", "test/e2e"]
+  "exclude": ["node_modules", "dist", "assets", "test/e2e", ".codeartsdoer"]
 }

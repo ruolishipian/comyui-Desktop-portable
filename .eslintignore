@@ -20,3 +20,6 @@ scripts/*.js
 
 # 排除测试模拟文件
 test/setup-mocks.js
+
+# 排除 CodeArts 临时文件
+.codeartsdoer/
