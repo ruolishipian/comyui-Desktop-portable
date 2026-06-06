@@ -113,7 +113,7 @@ function initializeModules(): void {
   configManager.init();
 
   // 2. 初始化日志
-  logger.init();
+  void logger.init();
 
   // 3. 初始化代理管理器
   void proxyManager.init();

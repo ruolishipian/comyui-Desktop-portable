@@ -169,7 +169,8 @@
       const updateTime = document.getElementById('update-time');
       const autoScrollCheckbox = document.getElementById('autoScroll');
 
-      const MAX_LINES = 5000;
+      const MAX_LINES = 2000;
+      const TRIM_BATCH = 200;
 
       // 中文级别映射
       const LEVEL_TEXT = {
@@ -235,8 +236,13 @@
 
       // 限制行数
       function trimOldLines() {
-        while (logContent.childElementCount > MAX_LINES) {
-          logContent.removeChild(logContent.firstChild);
+        const excess = logContent.childElementCount - MAX_LINES;
+        if (excess <= 0) return;
+        const removeCount = Math.min(excess + TRIM_BATCH, logContent.childElementCount);
+        const fragment = document.createDocumentFragment();
+        for (let i = 0; i < removeCount; i++) {
+          const child = logContent.firstChild;
+          if (child) fragment.appendChild(child);
         }
       }
 

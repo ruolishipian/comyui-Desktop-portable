@@ -7,6 +7,7 @@
 export class LineBuffer {
   private _buffer: string = '';
   private _onLine: (line: string) => void;
+  private readonly _maxBufferSize: number = 1024 * 1024;
 
   constructor(onLine: (line: string) => void) {
     this._onLine = onLine;
@@ -14,6 +15,15 @@ export class LineBuffer {
 
   push(data: string): void {
     this._buffer += data;
+
+    if (this._buffer.length > this._maxBufferSize) {
+      const trimmed = this._buffer.substring(0, this._maxBufferSize).trim();
+      if (trimmed) {
+        this._onLine(trimmed);
+      }
+      this._buffer = '';
+      return;
+    }
 
     let newlineIndex: number;
     while ((newlineIndex = this._buffer.indexOf('\n')) !== -1) {
