@@ -34,6 +34,12 @@ export class Logger {
   private _writeTimer: NodeJS.Timeout | null = null;
   private readonly _writeFlushInterval: number = 500;
   private readonly _maxPendingSize: number = 64 * 1024;
+  private readonly _maxIpcChunkSize: number = 32 * 1024;
+  private _highFreqCount: number = 0;
+  private _highFreqWindowStart: number = 0;
+  private readonly _highFreqThreshold: number = 200;
+  private readonly _highFreqWindowMs: number = 1000;
+  private _isHighFreqMode: boolean = false;
 
   private _comfyUILogFile: string = '';
   private _lastComfyUIRotateCheck: number = 0;
@@ -203,6 +209,29 @@ export class Logger {
       return;
     }
 
+    const now = Date.now();
+    if (now - this._highFreqWindowStart > this._highFreqWindowMs) {
+      if (this._isHighFreqMode && this._highFreqCount < this._highFreqThreshold) {
+        this._isHighFreqMode = false;
+      }
+      this._highFreqCount = 0;
+      this._highFreqWindowStart = now;
+    }
+    this._highFreqCount++;
+
+    if (this._highFreqCount >= this._highFreqThreshold) {
+      this._isHighFreqMode = true;
+    }
+
+    if (this._isHighFreqMode && level === 'info') {
+      const skipRate = Math.min(Math.floor(this._highFreqCount / this._highFreqThreshold), 10);
+      if (skipRate > 1 && this._highFreqCount % skipRate !== 0) {
+        this._appendPendingWrite(`[${new Date().toLocaleTimeString()}] [${level}] ${content}\n`);
+        this._appendComfyUIPendingWrite(`[${new Date().toLocaleTimeString()}] ${content}\n`);
+        return;
+      }
+    }
+
     const timestamp = new Date().toLocaleTimeString();
     const logLine = `[${timestamp}] [${level}] ${content}\n`;
 
@@ -262,7 +291,27 @@ export class Logger {
     if (this._logWindow && !this._logWindow.isDestroyed() && this._logWindow.isVisible()) {
       const logConfig = configManager.logs;
       if (logConfig.realtime) {
-        this._logWindow.webContents.send(IPC_CHANNELS.LOG_UPDATE, this._buffer);
+        if (this._buffer.length <= this._maxIpcChunkSize) {
+          this._logWindow.webContents.send(IPC_CHANNELS.LOG_UPDATE, this._buffer);
+        } else {
+          let offset = 0;
+          while (offset < this._buffer.length) {
+            let end = offset + this._maxIpcChunkSize;
+            if (end < this._buffer.length) {
+              const lastNewline = this._buffer.lastIndexOf('\n', end);
+              if (lastNewline > offset) {
+                end = lastNewline + 1;
+              }
+            } else {
+              end = this._buffer.length;
+            }
+            const chunk = this._buffer.substring(offset, end);
+            if (chunk) {
+              this._logWindow.webContents.send(IPC_CHANNELS.LOG_UPDATE, chunk);
+            }
+            offset = end;
+          }
+        }
       }
     }
 

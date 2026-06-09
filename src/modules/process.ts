@@ -1110,22 +1110,30 @@ comfyui_portable:
     const userDirectory = path.join(comfyuiPath, 'user');
     const dbPath = path.join(userDirectory, 'comfyui.db');
     
-    // SQLite 可能产生的锁文件
     const lockFiles = [
       `${dbPath}-journal`,
       `${dbPath}-wal`,
       `${dbPath}-shm`
     ];
+
+    const serverConfig = configManager.server;
+    const port = serverConfig.port ?? 8188;
+    const managerLogFiles = [
+      path.join(userDirectory, `comfyui_${port}.log`),
+      path.join(userDirectory, `comfyui_${port}.prev.log`)
+    ];
     
-    for (const lockFile of lockFiles) {
+    const allFiles = [...lockFiles, ...managerLogFiles];
+    
+    for (const lockFile of allFiles) {
       try {
         if (fsSync.existsSync(lockFile)) {
           fsSync.unlinkSync(lockFile);
-          logger.info(`已清理数据库锁文件: ${path.basename(lockFile)}`);
+          logger.info(`已清理锁文件: ${path.basename(lockFile)}`);
         }
       } catch (err) {
         const error = err as Error;
-        logger.warn(`清理数据库锁文件失败 ${path.basename(lockFile)}: ${error.message}`);
+        logger.warn(`清理锁文件失败 ${path.basename(lockFile)}: ${error.message}`);
       }
     }
   }
@@ -1184,8 +1192,8 @@ comfyui_portable:
       }
       
       // 额外等待时间，确保数据库锁完全释放
-      logger.info('等待数据库锁释放...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      logger.info('等待文件句柄释放...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
       // 清理数据库锁文件
       const comfyuiPath = configManager.get('comfyuiPath');
