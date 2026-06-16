@@ -343,9 +343,8 @@ export class WindowManager {
           }
           
           /* 修复弹窗遮罩层 */
-          .modal-backdrop, .el-dialog__wrapper, [class*="modal"], [class*="dialog"] {
+          .modal-backdrop, .el-dialog__wrapper {
             background: rgba(0,0,0,0.7) !important;
-            z-index: 99999 !important;
           }
           
           /* 消除 Electron 的默认滚动条差异 */
