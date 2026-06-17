@@ -34,11 +34,11 @@ export class ProcessManager {
   // 健康检查
   private _healthCheckTimer: NodeJS.Timeout | null = null;
   private readonly _healthCheckInterval: number = 30000; // 30秒检查一次（从15秒优化）
-  private readonly _healthCheckTimeout: number = 10000; // 10秒超时（从5秒优化）
+  private readonly _healthCheckTimeout: number = 15000; // 15秒超时（插件加载时响应慢）
   private _consecutiveFailures: number = 0;
   private readonly _maxConsecutiveFailures: number = 5; // 连续失败5次才标记为失败（从3次优化）
   private _healthCheckStartTime: number = 0; // 健康检查开始时间
-  private readonly _healthCheckGracePeriod: number = 60000; // 启动后60秒内的宽容期
+  private readonly _healthCheckGracePeriod: number = 180000; // 启动后180秒内的宽容期（插件多时启动慢）
 
   // 启动检测配置
   public static readonly MAX_FAIL_WAIT = 30 * 60 * 1000; // 30分钟最大等待时间
@@ -783,40 +783,28 @@ comfyui_portable:
     } catch (err) {
       const error = err as Error | null;
 
-      // 在宽容期内，忽略超时错误
-      if (inGracePeriod && error?.name === 'AbortError') {
-        logger.info(`健康检查超时（宽容期内，忽略）: 启动后 ${Math.floor(elapsed / 1000)} 秒`);
-        // 不增加失败计数
+      // 在宽容期内，忽略所有错误（插件加载期间服务可能暂时不可用）
+      if (inGracePeriod) {
+        logger.info(`健康检查失败（宽容期内，忽略）: 启动后 ${Math.floor(elapsed / 1000)} 秒 - ${error?.message ?? '未知'}`);
         return;
       }
 
-      // 忽略超时错误，可能是服务繁忙
-      if (error?.name !== 'AbortError') {
-        const errorMessage = error?.message ?? '未知错误';
-        logger.error(`ComfyUI 服务无响应: ${errorMessage}`);
-        this._consecutiveFailures++;
-
-        if (this._consecutiveFailures >= this._maxConsecutiveFailures) {
-          logger.error(`ComfyUI 服务连续 ${this._consecutiveFailures} 次无响应`);
-          stateManager.status = Status.FAILED;
-          this._notifyStatusChange();
-          this._stopHealthCheck();
-
-          // 尝试自动恢复
-          void this._attemptRecovery();
-        }
-      } else {
-        // 超时错误（非宽容期）
+      // 非宽容期：超时错误，可能是服务繁忙，仅警告
+      if (error?.name === 'AbortError') {
         logger.warn(`健康检查超时: ${error.message || '未知'}（连续失败: ${this._consecutiveFailures + 1}/${this._maxConsecutiveFailures}）`);
-        this._consecutiveFailures++;
+      } else {
+        // 网络错误等
+        const errorMessage = error?.message ?? '未知错误';
+        logger.warn(`ComfyUI 服务暂时无响应: ${errorMessage}（连续失败: ${this._consecutiveFailures + 1}/${this._maxConsecutiveFailures}）`);
+      }
+      this._consecutiveFailures++;
 
-        if (this._consecutiveFailures >= this._maxConsecutiveFailures) {
-          logger.error(`ComfyUI 服务连续 ${this._consecutiveFailures} 次超时无响应`);
-          stateManager.status = Status.FAILED;
-          this._notifyStatusChange();
-          this._stopHealthCheck();
-          void this._attemptRecovery();
-        }
+      if (this._consecutiveFailures >= this._maxConsecutiveFailures) {
+        logger.error(`ComfyUI 服务连续 ${this._consecutiveFailures} 次健康检查失败`);
+        stateManager.status = Status.FAILED;
+        this._notifyStatusChange();
+        this._stopHealthCheck();
+        void this._attemptRecovery();
       }
     }
   }

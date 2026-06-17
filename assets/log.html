@@ -56,7 +56,8 @@
         padding: 10px;
         border-radius: 4px;
         font-size: 11px;
-        contain: content;
+        contain: strict;
+        will-change: scroll-position;
       }
       .log-container::-webkit-scrollbar {
         width: 8px;
@@ -68,9 +69,12 @@
         background: #333;
         border-radius: 4px;
       }
-      .log-container .e { color: #ef4444; }
-      .log-container .w { color: #f59e0b; }
-      .log-container .i { color: #60a5fa; }
+      .log-line {
+        backface-visibility: hidden;
+      }
+      .e { color: #ef4444; }
+      .w { color: #f59e0b; }
+      .i { color: #60a5fa; }
       .status-bar {
         margin-top: 10px;
         color: #9ca3af;
@@ -91,27 +95,13 @@
         border-radius: 50%;
         background: #6b7280;
       }
-      .status-dot.running {
-        background: #22c55e;
-      }
-      .status-dot.stopped {
-        background: #6b7280;
-      }
-      .status-dot.starting {
-        background: #f59e0b;
-        animation: pulse 1s infinite;
-      }
-      .status-dot.failed {
-        background: #ef4444;
-      }
+      .status-dot.running { background: #22c55e; }
+      .status-dot.stopped { background: #6b7280; }
+      .status-dot.starting { background: #f59e0b; animation: pulse 1s infinite; }
+      .status-dot.failed { background: #ef4444; }
       @keyframes pulse {
-        0%,
-        100% {
-          opacity: 1;
-        }
-        50% {
-          opacity: 0.5;
-        }
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
       }
       .auto-scroll {
         display: flex;
@@ -161,86 +151,138 @@
       const updateTime = document.getElementById('update-time');
       const autoScrollCheckbox = document.getElementById('autoScroll');
 
-      const MAX_CHARS = 200 * 1024;
-      let logText = '';
-      let renderTimer = null;
-      let isDirty = false;
+      const MAX_LINES = 2000;
+      const TRIM_LINES = 500;
+      const RENDER_SKIP_FRAMES = 2;
+      let pendingText = '';
+      let rafId = null;
+      let isPageVisible = !document.hidden;
       let lineCount = 0;
-      const MAX_LINES = 3000;
-      const IPC_THROTTLE_MS = 200;
+      let frameCount = 0;
+      let userScrolledUp = false;
 
       const LEVEL_TEXT = { error: '错误', warn: '警告', info: '信息' };
       const LEVEL_CLASS = { error: 'e', warn: 'w', info: 'i' };
 
-      function parseAndFormat(text) {
+      logContent.addEventListener('scroll', () => {
+        const { scrollTop, scrollHeight, clientHeight } = logContent;
+        userScrolledUp = scrollTop + clientHeight < scrollHeight - 50;
+      });
+
+      function formatLineToHtml(line) {
+        const match = line.match(/^\[(\d{2}:\d{2}:\d{2})\] \[(error|warn|info)\] (.*)$/);
+        let ts, lvl, msg;
+        if (match) {
+          ts = match[1]; lvl = match[2]; msg = match[3];
+        } else {
+          const sm = line.match(/^\[(\d{2}:\d{2}:\d{2})\] (.*)$/);
+          if (sm) { ts = sm[1]; lvl = 'info'; msg = sm[2]; }
+          else { ts = ''; lvl = 'info'; msg = line; }
+        }
+        const cls = LEVEL_CLASS[lvl] || 'i';
+        const lt = LEVEL_TEXT[lvl] || '信息';
+        const escaped = msg.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        return '<span class="' + cls + '">[' + ts + '] [' + lt + '] ' + escaped + '</span>';
+      }
+
+      function appendIncremental(text) {
         const lines = text.split('\n');
-        let html = '';
+        const fragment = document.createDocumentFragment();
+        let count = 0;
         for (const line of lines) {
           if (!line.trim()) continue;
-          const match = line.match(/^\[(\d{2}:\d{2}:\d{2})\] \[(error|warn|info)\] (.*)$/);
-          let ts, lvl, msg, cls;
-          if (match) {
-            ts = match[1]; lvl = match[2]; msg = match[3];
-          } else {
-            const sm = line.match(/^\[(\d{2}:\d{2}:\d{2})\] (.*)$/);
-            if (sm) { ts = sm[1]; lvl = 'info'; msg = sm[2]; }
-            else { ts = ''; lvl = 'info'; msg = line; }
-          }
-          cls = LEVEL_CLASS[lvl] || 'i';
-          const lt = LEVEL_TEXT[lvl] || '信息';
-          const escaped = msg.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          html += '<span class="' + cls + '">[' + ts + '] [' + lt + '] ' + escaped + '</span>\n';
+          const div = document.createElement('div');
+          div.className = 'log-line';
+          div.innerHTML = formatLineToHtml(line);
+          fragment.appendChild(div);
+          count++;
         }
-        return html;
-      }
-
-      function appendLogData(text) {
-        const newLines = text.split('\n').filter(l => l.trim()).length;
-        lineCount += newLines;
-
-        if (lineCount > MAX_LINES) {
-          const allLines = (logText + text).split('\n');
-          const keep = allLines.slice(-MAX_LINES);
-          logText = keep.join('\n');
-          lineCount = MAX_LINES;
-        } else {
-          logText += text;
-        }
-
-        if (logText.length > MAX_CHARS) {
-          logText = logText.slice(-Math.floor(MAX_CHARS * 0.8));
-        }
-
-        if (!renderTimer) {
-          isDirty = true;
-          renderTimer = setTimeout(flushRender, IPC_THROTTLE_MS);
-        } else {
-          isDirty = true;
+        if (count > 0) {
+          logContent.appendChild(fragment);
+          lineCount += count;
+          trimOldLines();
         }
       }
 
-      function flushRender() {
-        renderTimer = null;
-        if (!isDirty) return;
-        isDirty = false;
-        logContent.innerHTML = parseAndFormat(logText);
-        if (autoScrollCheckbox.checked) {
+      function trimOldLines() {
+        if (lineCount <= MAX_LINES) return;
+        const removeCount = lineCount - MAX_LINES + TRIM_LINES;
+        for (let i = 0; i < removeCount && logContent.firstChild; i++) {
+          logContent.removeChild(logContent.firstChild);
+        }
+        lineCount = Math.max(0, lineCount - removeCount);
+      }
+
+      function scheduleRender() {
+        if (rafId) return;
+        rafId = requestAnimationFrame(doRender);
+      }
+
+      function doRender() {
+        rafId = null;
+
+        if (!isPageVisible) {
+          if (pendingText) scheduleRender();
+          return;
+        }
+
+        frameCount++;
+        if (frameCount % RENDER_SKIP_FRAMES !== 0 && pendingText.length < 64 * 1024) {
+          scheduleRender();
+          return;
+        }
+
+        if (!pendingText) return;
+
+        const batch = pendingText;
+        pendingText = '';
+        appendIncremental(batch);
+
+        if (autoScrollCheckbox.checked && !userScrolledUp) {
           logContent.scrollTop = logContent.scrollHeight;
         }
+
+        if (pendingText) {
+          scheduleRender();
+        }
       }
+
+      function onLogUpdate(data) {
+        pendingText += data;
+
+        if (pendingText.length > 128 * 1024) {
+          const lines = pendingText.split('\n');
+          const keep = lines.slice(-Math.floor(MAX_LINES * 0.5));
+          pendingText = keep.join('\n');
+        }
+
+        scheduleRender();
+        updateTime.textContent = new Date().toLocaleTimeString();
+      }
+
+      document.addEventListener('visibilitychange', () => {
+        isPageVisible = !document.hidden;
+        if (isPageVisible && pendingText) {
+          scheduleRender();
+        }
+      });
 
       window.addEventListener('DOMContentLoaded', async () => {
         if (window.comfyuiDesktop && window.comfyuiDesktop.getSessionLog) {
           try {
-            const sessionLogCache = await window.comfyuiDesktop.getSessionLog();
-            if (sessionLogCache) {
-              const lines = sessionLogCache.split('\n').filter(l => l.trim());
-              const maxInitial = 500;
-              const startIdx = Math.max(0, lines.length - maxInitial);
-              const display = lines.slice(startIdx).join('\n');
-              lineCount = lines.slice(startIdx).length;
-              logText = display + '\n';
-              logContent.innerHTML = parseAndFormat(logText);
+            const cache = await window.comfyuiDesktop.getSessionLog();
+            if (cache) {
+              const lines = cache.split('\n').filter(l => l.trim());
+              const maxInit = 300;
+              const start = Math.max(0, lines.length - maxInit);
+              if (start > 0) {
+                const div = document.createElement('div');
+                div.className = 'log-line';
+                div.innerHTML = '<span class="i">... 跳过前 ' + start + ' 行 ...</span>';
+                logContent.appendChild(div);
+              }
+              const display = lines.slice(start).join('\n');
+              appendIncremental(display);
               logContent.scrollTop = logContent.scrollHeight;
             } else {
               appendPlaceholder();
@@ -254,10 +296,8 @@
 
         if (window.electronAPI) {
           window.electronAPI.on('logUpdate', (_, data) => {
-            appendLogData(data);
-            updateTime.textContent = new Date().toLocaleTimeString();
+            onLogUpdate(data);
           });
-
           window.electronAPI.on('statusUpdate', (_, data) => {
             updateStatus(data);
           });
@@ -265,15 +305,18 @@
       });
 
       function appendPlaceholder() {
-        logContent.innerHTML = '<span class="i">日志窗口已打开，等待新日志...</span>';
+        const div = document.createElement('div');
+        div.className = 'log-line';
+        div.innerHTML = '<span class="i">日志窗口已打开，等待新日志...</span>';
+        logContent.appendChild(div);
       }
 
       async function refreshLog() {
         try {
           const content = await window.comfyuiDesktop.getLogContent();
-          logText = content;
-          lineCount = content.split('\n').filter(l => l.trim()).length;
-          logContent.innerHTML = parseAndFormat(content);
+          logContent.innerHTML = '';
+          lineCount = 0;
+          appendIncremental(content);
           updateTime.textContent = new Date().toLocaleTimeString();
         } catch (err) {
           logContent.textContent = '加载日志失败：' + err.message;
@@ -283,9 +326,13 @@
       async function clearLog() {
         const result = await window.comfyuiDesktop.clearLog();
         if (result) {
-          logText = '';
+          logContent.innerHTML = '';
           lineCount = 0;
-          logContent.innerHTML = '<span class="i">日志已清空</span>';
+          pendingText = '';
+          const div = document.createElement('div');
+          div.className = 'log-line';
+          div.innerHTML = '<span class="i">日志已清空</span>';
+          logContent.appendChild(div);
           updateTime.textContent = new Date().toLocaleTimeString();
         }
       }
@@ -303,14 +350,9 @@
 
       function updateStatus(data) {
         const statusMap = {
-          stopped: '已停止',
-          starting: '启动中',
-          running: '运行中',
-          failed: '启动失败',
-          restarting: '重启中',
-          stopping: '停止中'
+          stopped: '已停止', starting: '启动中', running: '运行中',
+          failed: '启动失败', restarting: '重启中', stopping: '停止中'
         };
-
         statusText.textContent = '状态：' + (statusMap[data.status] || data.status);
         statusDot.className = 'status-dot ' + data.status;
         portText.textContent = data.port || '-';

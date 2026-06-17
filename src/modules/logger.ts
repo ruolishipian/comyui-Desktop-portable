@@ -25,7 +25,7 @@ export class Logger {
   private _timer: NodeJS.Timeout | null = null;
   private _logWindow: BrowserWindow | null = null;
   private _initialized: boolean = false;
-  private _maxBufferSize: number = 1024 * 1024;
+
   private _lastRotateCheck: number = 0;
   private readonly _rotateCheckInterval: number = 60000;
   private _writeStream: fs.WriteStream | null = null;
@@ -246,11 +246,17 @@ export class Logger {
       this._sessionLogSize += logLine.length;
     }
 
-    if (this._buffer.length < this._maxBufferSize) {
+    const maxIpcBuffer = 256 * 1024;
+    if (this._buffer.length < maxIpcBuffer) {
       this._buffer += logLine;
     } else {
-      this._flushBuffer();
-      this._buffer = logLine;
+      const halfLen = Math.floor(this._buffer.length / 2);
+      const cutIdx = this._buffer.indexOf('\n', halfLen);
+      if (cutIdx > 0) {
+        this._buffer = this._buffer.substring(cutIdx + 1) + logLine;
+      } else {
+        this._buffer = logLine;
+      }
     }
     this._scheduleFlush();
 
@@ -278,7 +284,9 @@ export class Logger {
   private _scheduleFlush(): void {
     if (this._timer) return;
 
-    const throttle = configManager.advanced.stdoutThrottle ?? 100;
+    const throttle = this._isHighFreqMode
+      ? Math.min((configManager.advanced.stdoutThrottle ?? 100) * 3, 500)
+      : (configManager.advanced.stdoutThrottle ?? 100);
     this._timer = setTimeout(() => {
       this._flushBuffer();
       this._timer = null;
@@ -291,31 +299,48 @@ export class Logger {
     if (this._logWindow && !this._logWindow.isDestroyed() && this._logWindow.isVisible()) {
       const logConfig = configManager.logs;
       if (logConfig.realtime) {
+        if (this._logWindow.isMinimized()) {
+          this._buffer = '';
+          return;
+        }
         if (this._buffer.length <= this._maxIpcChunkSize) {
           this._logWindow.webContents.send(IPC_CHANNELS.LOG_UPDATE, this._buffer);
         } else {
-          let offset = 0;
-          while (offset < this._buffer.length) {
-            let end = offset + this._maxIpcChunkSize;
-            if (end < this._buffer.length) {
-              const lastNewline = this._buffer.lastIndexOf('\n', end);
-              if (lastNewline > offset) {
-                end = lastNewline + 1;
-              }
-            } else {
-              end = this._buffer.length;
-            }
-            const chunk = this._buffer.substring(offset, end);
-            if (chunk) {
-              this._logWindow.webContents.send(IPC_CHANNELS.LOG_UPDATE, chunk);
-            }
-            offset = end;
-          }
+          void this._sendBufferChunks(this._buffer);
         }
       }
     }
 
     this._buffer = '';
+  }
+
+  private async _sendBufferChunks(buffer: string): Promise<void> {
+    const chunks: string[] = [];
+    let offset = 0;
+    while (offset < buffer.length) {
+      let end = offset + this._maxIpcChunkSize;
+      if (end < buffer.length) {
+        const lastNewline = buffer.lastIndexOf('\n', end);
+        if (lastNewline > offset) {
+          end = lastNewline + 1;
+        }
+      } else {
+        end = buffer.length;
+      }
+      const chunk = buffer.substring(offset, end);
+      if (chunk) {
+        chunks.push(chunk);
+      }
+      offset = end;
+    }
+
+    const delay = this._isHighFreqMode ? 50 : 16;
+    for (const chunk of chunks) {
+      if (this._logWindow && !this._logWindow.isDestroyed()) {
+        this._logWindow.webContents.send(IPC_CHANNELS.LOG_UPDATE, chunk);
+      }
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
 
   private _appendPendingWrite(logLine: string): void {

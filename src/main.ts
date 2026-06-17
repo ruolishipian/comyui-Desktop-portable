@@ -28,9 +28,8 @@ import { StateData } from './types';
 // 禁用 Electron 所有非 Chrome 原生行为，让插件认为运行在 Chrome 中
 app.disableHardwareAcceleration(); // 消除渲染差异
 app.commandLine.appendSwitch('no-sandbox');
-app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors'); // 禁用 Electron 自定义 CORS 规则
-app.commandLine.appendSwitch('enable-experimental-web-platform-features', 'false'); // 关闭实验性特性
-app.commandLine.appendSwitch('disable-electron-zoom-controls'); // 禁用 Electron 自定义缩放
+app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors');
+app.commandLine.appendSwitch('disable-electron-zoom-controls');
 
 // 设置 App User Model ID（解决 Windows 任务栏图标问题）
 // 这对于 Windows 任务栏正确显示图标非常重要
@@ -284,9 +283,9 @@ void app
     // 标记 IPC 就绪
     stateManager.isIpcReady = true;
 
-    // 清除浏览器缓存（防止旧的 JS 文件缓存导致错误）
+    // 清除浏览器HTTP缓存（防止旧的 JS 文件缓存导致错误，保留 localStorage/IndexedDB）
     try {
-      await windowManager.clearAllCache();
+      await windowManager.clearBrowserCache();
       logger.info('启动时已清除浏览器缓存');
     } catch (err) {
       const error = err as Error;

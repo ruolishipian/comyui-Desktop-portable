@@ -253,51 +253,21 @@ export class WindowManager {
         // 1. 覆盖 Electron 环境检测
         window.electron = undefined;
         window.process = undefined;
-        window.isElectron = () => false;
+        try { delete window.isElectron; } catch(e) {}
         
-        // 2. 强制使用 Chrome 用户代理
+        // 2. 强制使用 Chrome 用户代理（动态获取 Chromium 版本号）
         try {
+          const chromeVersion = navigator.userAgent.match(/Chrome\\/([\\d.]+)/)?.[1] || '130.0.0.0';
           Object.defineProperty(navigator, 'userAgent', {
             get: () =>
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-              '(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+              '(KHTML, like Gecko) Chrome/' + chromeVersion + ' Safari/537.36'
           });
         } catch(e) {}
         
-        // 3. 监控 postMessage 调用（调试用）
-        const originalPostMessage = window.postMessage;
-        window.postMessage = function(message, targetOrigin, transfer) {
-          if (message && message.type && message.type.startsWith('weilin_prompt_ui_')) {
-            console.log('[Electron Debug] window.postMessage called:', message.type, message);
-          }
-          return originalPostMessage.call(this, message, targetOrigin, transfer);
-        };
-        
-        // 4. 监控 window.parent.postMessage 调用
-        try {
-          const parentPostMessage = window.parent.postMessage;
-          window.parent.postMessage = function(message, targetOrigin, transfer) {
-            if (message && message.type && message.type.startsWith('weilin_prompt_ui_')) {
-              console.log('[Electron Debug] window.parent.postMessage called:', message.type, message);
-              // 直接在当前窗口触发消息事件
-              const event = new MessageEvent('message', {
-                data: message,
-                origin: targetOrigin,
-                source: window
-              });
-              window.dispatchEvent(event);
-              return;
-            }
-            return parentPostMessage.call(this, message, targetOrigin, transfer);
-          };
-        } catch(e) {
-          console.log('[Electron Debug] Failed to override window.parent.postMessage:', e);
-        }
-        
-        // 5. 确保 window.parent 指向 window（解决 iframe 通信问题）
+        // 3. 确保 window.parent 指向 window（解决 iframe 通信问题）
         try {
           if (window.parent !== window) {
-            console.log('[Electron Fix] Redirecting window.parent to window');
             Object.defineProperty(window, 'parent', {
               get: () => window,
               set: () => {}
@@ -305,10 +275,9 @@ export class WindowManager {
           }
         } catch(e) {}
         
-        // 6. 确保 window.top 指向 window
+        // 4. 确保 window.top 指向 window
         try {
           if (window.top !== window) {
-            console.log('[Electron Fix] Redirecting window.top to window');
             Object.defineProperty(window, 'top', {
               get: () => window,
               set: () => {}
@@ -316,7 +285,7 @@ export class WindowManager {
           }
         } catch(e) {}
         
-        // 7. 注入修复 CSS
+        // 5. 注入修复 CSS
         const style = document.createElement('style');
         style.textContent = \`
           /* 修复 Lora/模型管理面板的字体与布局 */
@@ -354,14 +323,6 @@ export class WindowManager {
           }
         \`;
         document.head.appendChild(style);
-        
-        // 8. 调试：监控 clickAddTag 的值
-        setTimeout(() => {
-          const clickAddTagValue = localStorage.getItem('weilin_prompt_ui_clickAddTag');
-          console.log('[Electron Debug] clickAddTag value from localStorage:', clickAddTagValue);
-        }, 3000);
-        
-        console.log('[Electron Fix] WeiLin plugin fixes loaded');
       `
         )
         .catch(() => {
@@ -376,16 +337,12 @@ export class WindowManager {
     // ========== 新窗口处理 ==========
     // 让外部链接用系统浏览器打开，内部链接由页面自己处理
     win.webContents.setWindowOpenHandler(({ url }) => {
-      // 如果是外部链接（http/https），用系统浏览器打开
       if (url.startsWith('http://') || url.startsWith('https://')) {
-        // 动态导入 shell
         void import('electron').then(({ shell }) => {
           shell.openExternal(url).catch(() => {});
         });
-        return { action: 'deny' };
       }
-      // 其他情况（如 javascript: 或内部链接），让页面自己处理
-      return { action: 'allow' };
+      return { action: 'deny' };
     });
 
     // 右键菜单
@@ -428,6 +385,12 @@ export class WindowManager {
       this._windows.delete('log');
       this._clearWindowState('log');
       this._notifyEvent('closed', 'log');
+    });
+
+    win.webContents.on('did-finish-load', () => {
+      if (!win.isDestroyed()) {
+        win.webContents.send('statusUpdate', stateManager.getStateData());
+      }
     });
 
     this._windows.set('log', win);
