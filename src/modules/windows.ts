@@ -469,7 +469,8 @@ export class WindowManager {
       {
         label: '刷新页面',
         click: () => {
-          if (!win.isDestroyed()) win.reload();
+          if (win.isDestroyed()) return;
+          win.webContents.reloadIgnoringCache();
         }
       },
       {
@@ -478,29 +479,11 @@ export class WindowManager {
           if (win.isDestroyed()) return;
           void (async () => {
             try {
-              // 先清除所有缓存
-              await this.clearAllCache();
-              console.log('[WindowManager] 强制刷新：缓存已清除');
-
-              // 显示加载界面
-              void win.loadFile(PATHS.LOADING_HTML());
-
-              // 如果 ComfyUI 正在运行，重新加载页面
-              const status = stateManager.status;
-              const port = stateManager.port;
-              if (status === 'running' && port) {
-                // 延迟加载，让用户看到加载界面
-                setTimeout(() => {
-                  if (!win.isDestroyed()) {
-                    void win.loadURL(`http://localhost:${port}`);
-                  }
-                }, 500);
-              }
+              await this.clearBrowserCache();
             } catch (err) {
               console.error('[WindowManager] 强制刷新失败:', err);
-              // 即使清除缓存失败，也尝试刷新
-              win.webContents.reloadIgnoringCache();
             }
+            win.webContents.reloadIgnoringCache();
           })();
         }
       },
