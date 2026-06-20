@@ -17,7 +17,7 @@ import { WindowManager } from './windows';
 // 托盘管理器
 export class TrayManager {
   private _tray: Tray | null = null;
-  private _updateInterval: NodeJS.Timeout | null = null;
+
   private _windowManager: WindowManager | null = null;
   private _processManager: ProcessManager | null = null;
 
@@ -41,10 +41,8 @@ export class TrayManager {
     this._tray = new Tray(iconPath);
     this._updateMenu();
 
-    // 定时更新菜单
-    this._updateInterval = setInterval(() => {
-      this._updateMenu();
-    }, 1000);
+    // 监听状态变更更新菜单（替代定时器轮询）
+    stateManager.addListener(() => this._updateMenu());
 
     // 点击事件
     this._tray.on('click', () => {
@@ -171,10 +169,7 @@ export class TrayManager {
 
   // 销毁托盘
   public destroy(): void {
-    if (this._updateInterval) {
-      clearInterval(this._updateInterval);
-      this._updateInterval = null;
-    }
+
     if (this._tray) {
       this._tray.destroy();
       this._tray = null;

@@ -12,6 +12,7 @@ export { windowManager, WindowManager } from './windows';
 export { trayManager, TrayManager } from './tray';
 export { ipcManager, IPCManager } from './ipc';
 export { proxyManager, ProxyManager } from './proxy';
+export { httpProxyServer, HttpProxyServer } from './http-proxy';
 export { FatalError, AppError, ErrorHandler, ErrorType, handleError } from './errors';
 
 // 类型导出

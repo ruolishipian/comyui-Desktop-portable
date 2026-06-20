@@ -118,13 +118,13 @@ export class EnvironmentChecker {
       }
 
       // 使用共享函数查找 Python 路径
-      const pythonPath = findPythonPath(appPath);
-      if (pythonPath) {
+      const detectedPythonPath = findPythonPath(appPath);
+      if (detectedPythonPath) {
         // 自动设置 Python 路径
-        configManager.set('pythonPath', pythonPath);
+        configManager.set('pythonPath', detectedPythonPath);
         this._checks.push({
           type: 'success' as CheckType,
-          msg: `便携包模式：自动检测到 Python (${pythonPath})`
+          msg: `便携包模式：自动检测到 Python (${detectedPythonPath})`
         });
         return;
       }
@@ -168,6 +168,7 @@ export class EnvironmentChecker {
   // 检查端口是否可用
   private _checkPortAvailable(port: number): Promise<boolean> {
     return new Promise(resolve => {
+      const host = configManager.server.listenAll === true ? '0.0.0.0' : '127.0.0.1';
       const tester = net
         .createServer()
         .once('error', () => resolve(false))
@@ -175,7 +176,7 @@ export class EnvironmentChecker {
           tester.close();
           resolve(true);
         })
-        .listen(port);
+        .listen(port, host);
     });
   }
 

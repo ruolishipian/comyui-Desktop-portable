@@ -22,13 +22,11 @@ import {
   proxyManager,
   handleError
 } from './modules';
+import { httpProxyServer } from './modules/http-proxy';
 import { StateData } from './types';
 
 // ========== Chrome 环境模拟配置 ==========
-// 禁用 Electron 所有非 Chrome 原生行为，让插件认为运行在 Chrome 中
-app.disableHardwareAcceleration(); // 消除渲染差异
-app.commandLine.appendSwitch('no-sandbox');
-app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors');
+// 所有资源通过内部 HTTP 代理服务提供，同源策略正常启用
 app.commandLine.appendSwitch('disable-electron-zoom-controls');
 
 // 设置 App User Model ID（解决 Windows 任务栏图标问题）
@@ -175,13 +173,16 @@ function setupStateListeners(): void {
  */
 function handleStatusChange(data: StateData): void {
   const { status, port } = data;
+  const proxyUrl = httpProxyServer.url;
 
-  // 根据状态加载不同页面
   if (status === Status.RUNNING && port) {
-    windowManager.loadPage('main', `http://localhost:${port}`);
+    httpProxyServer.updateComfyuiPort(port);
+    windowManager.loadPage('main', proxyUrl);
   } else if (status === Status.STOPPED || status === Status.STARTING) {
+    httpProxyServer.updateComfyuiPort(0);
     windowManager.loadPage('main', 'loading.html');
   } else if (status === Status.FAILED) {
+    httpProxyServer.updateComfyuiPort(0);
     windowManager.loadPage('main', 'error.html');
   }
 }
@@ -277,6 +278,18 @@ void app
     // 初始化模块
     initializeModules();
 
+    // 启动 HTTP 代理服务器（必须在创建窗口前启动）
+    try {
+      await httpProxyServer.start(0);
+      logger.info(`HTTP 代理服务器已启动: ${httpProxyServer.url}`);
+    } catch (err) {
+      const error = err as Error;
+      logger.error(`HTTP 代理服务器启动失败: ${error.message}`);
+      dialog.showErrorBox('启动失败', `代理服务器启动失败：${error.message}\n请重启应用`);
+      app.exit(2021);
+      return;
+    }
+
     // 设置单实例
     setupSingleInstance();
 
@@ -314,14 +327,16 @@ void app
   });
 
 // 应用即将退出 - 优化退出速度
+let isQuittingInProgress = false;
 app.on('before-quit', event => {
   console.log('[Debug] before-quit event triggered, isQuiting:', global.isQuiting);
 
-  // 避免重复处理（但如果已经标记为退出，仍然需要执行退出逻辑）
-  if (global.isQuiting) {
-    console.log('[Debug] Already quiting, but still need to check if we should stop ComfyUI');
-    // 不要直接返回，继续检查是否需要停止 ComfyUI
+  // 防止重入：如果已经在退出流程中，直接返回
+  if (isQuittingInProgress) {
+    event.preventDefault();
+    return;
   }
+  isQuittingInProgress = true;
 
   // 清空会话日志缓存
   logger.clearSessionLog();
@@ -359,6 +374,8 @@ app.on('before-quit', event => {
 
         // 4. 关闭所有窗口并退出
         logger.info('ComfyUI 便携桌面版退出');
+        trayManager.destroy();
+        httpProxyServer.stop();
         windowManager.closeAll();
         app.exit(0);
       } else {
@@ -372,7 +389,8 @@ app.on('before-quit', event => {
   } else {
     global.isQuiting = true;
     logger.info('ComfyUI 便携桌面版开始退出');
-    // 如果 ComfyUI 没有在运行，直接退出
+    trayManager.destroy();
+    httpProxyServer.stop();
     windowManager.closeAll();
     app.exit(0);
   }

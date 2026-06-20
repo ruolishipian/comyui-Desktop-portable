@@ -3,6 +3,8 @@
  * 集中管理主进程与渲染进程之间的通信
  */
 
+import path from 'path';
+
 import { ipcMain, app, dialog, BrowserWindow } from 'electron';
 
 import { configManager } from './config';
@@ -12,6 +14,58 @@ import { ProcessManager } from './process';
 import { stateManager } from './state';
 import { TrayManager } from './tray';
 import { WindowManager } from './windows';
+
+const UPDATE_CONFIG_ALLOWED_KEYS: ReadonlySet<string> = new Set([
+  'comfyuiPath',
+  'pythonPath',
+  'envArgs',
+  'envVars',
+  'server',
+  'server.port',
+  'server.autoStart',
+  'server.autoRestart',
+  'server.cpuMode',
+  'server.listenAll',
+  'server.disableCUDA',
+  'server.disableIPEX',
+  'server.modelDir',
+  'server.outputDir',
+  'server.customArgs',
+  'server.timeout',
+  'server.argNames',
+  'server.argNames.baseDirectory',
+  'server.argNames.outputDirectory',
+  'server.argNames.extraModelPathsConfig',
+  'server.argNames.disableCudaMalloc',
+  'server.argNames.disableIpexOptimize',
+  'logs',
+  'logs.enable',
+  'logs.level',
+  'logs.maxSize',
+  'logs.keepDays',
+  'logs.realtime',
+  'tray',
+  'tray.minimizeToTray',
+  'advanced',
+  'advanced.singleInstance',
+  'advanced.stdoutThrottle',
+  'window',
+  'window.width',
+  'window.height',
+  'window.x',
+  'window.y',
+  'window.maximized'
+]);
+
+function isValidFilePath(filePath: string): boolean {
+  if (filePath === '') return true;
+  try {
+    const normalized = path.normalize(filePath);
+    return normalized.length <= 4096 && !normalized.includes('\0');
+  } catch {
+    return false;
+  }
+}
 
 /**
  * 通用的路径选择对话框函数
@@ -77,16 +131,25 @@ export class IPCManager {
       return configManager.getAll();
     });
 
-    // 更新配置
     typedHandle(IPC_CHANNELS.UPDATE_CONFIG, (_, key, value) => {
+      if (typeof key !== 'string' || !UPDATE_CONFIG_ALLOWED_KEYS.has(key)) {
+        logger.warn(`UPDATE_CONFIG 拒绝非法键：${String(key)}`);
+        return configManager.getAll();
+      }
+
+      if (key === 'comfyuiPath' || key === 'pythonPath' || key === 'server.modelDir' || key === 'server.outputDir') {
+        if (typeof value === 'string' && !isValidFilePath(value)) {
+          logger.warn(`UPDATE_CONFIG 拒绝非法路径值：${key} = ${value}`);
+          return configManager.getAll();
+        }
+      }
+
       configManager.set(key, value);
 
-      // 异步广播状态更新
       setImmediate(() => {
         this._broadcastStatus();
       });
 
-      // 异步记录日志
       const valueStr = typeof value === 'object' ? JSON.stringify(value) : String(value);
       logger.info(`更新配置：${String(key)} = ${valueStr}`);
 
@@ -159,28 +222,39 @@ export class IPCManager {
   private _registerPathHandlers(): void {
     // 保存环境路径
     typedHandle(IPC_CHANNELS.SAVE_ENV_PATH, (_, { comfyuiPath, pythonPath, envArgs, envVars }) => {
-      logger.info(`[调试] 保存环境路径 - comfyuiPath: ${comfyuiPath}`);
-      logger.info(`[调试] 保存环境路径 - pythonPath: ${pythonPath}`);
-      logger.info(`[调试] 保存环境路径 - envArgs: "${envArgs}"`);
-      logger.info(`[调试] 保存环境路径 - envVars: "${envVars}"`);
+      if (!isValidFilePath(comfyuiPath) || !isValidFilePath(pythonPath)) {
+        logger.warn('SAVE_ENV_PATH 拒绝非法路径');
+        return false;
+      }
+
+      if (typeof (envArgs as unknown) !== 'string' && envArgs !== undefined) {
+        logger.warn('SAVE_ENV_PATH 拒绝非法 envArgs 类型');
+        return false;
+      }
+      if (typeof (envVars as unknown) !== 'string' && envVars !== undefined) {
+        logger.warn('SAVE_ENV_PATH 拒绝非法 envVars 类型');
+        return false;
+      }
+
+      logger.info(`保存环境路径 - comfyuiPath: ${comfyuiPath}`);
+      logger.info(`保存环境路径 - pythonPath: ${pythonPath}`);
+      logger.info(`保存环境路径 - envArgs: "${envArgs ?? ''}"`);
+      logger.info(`保存环境路径 - envVars: "${envVars ?? ''}"`);
 
       configManager.set('comfyuiPath', comfyuiPath);
       configManager.set('pythonPath', pythonPath);
       configManager.set('envArgs', envArgs ?? '');
       configManager.set('envVars', envVars ?? '');
 
-      // 验证保存结果
       const savedEnvArgs = configManager.get('envArgs');
       const savedEnvVars = configManager.get('envVars');
-      logger.info(`[调试] 保存后验证 - envArgs: "${savedEnvArgs}"`);
-      logger.info(`[调试] 保存后验证 - envVars: "${savedEnvVars}"`);
+      logger.info(`保存后验证 - envArgs: "${savedEnvArgs}"`);
+      logger.info(`保存后验证 - envVars: "${savedEnvVars}"`);
 
-      // 关闭环境选择窗口
       if (this._windowManager !== null) {
         this._windowManager.getWindow('envSelect')?.close();
       }
 
-      // 创建主窗口和托盘
       if (this._windowManager !== null) {
         this._windowManager.createMainWindow();
       }

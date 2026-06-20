@@ -401,7 +401,11 @@
           }
         } catch (err) {
           console.error('Failed to initialize settings:', err);
-          document.body.innerHTML = '<div style="color: red; padding: 20px;">加载设置失败: ' + err.message + '</div>';
+          const errorDiv = document.createElement('div');
+          errorDiv.style.cssText = 'color: red; padding: 20px;';
+          errorDiv.textContent = '加载设置失败: ' + (err instanceof Error ? err.message : String(err));
+          document.body.innerHTML = '';
+          document.body.appendChild(errorDiv);
         }
       });
 

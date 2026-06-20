@@ -29,6 +29,8 @@ module.exports = {
     'no-control-regex': 'off',
     'no-trailing-spaces': 'error',
     'eol-last': ['error', 'always'],
+    'no-constant-condition': 'error',
+    'eqeqeq': ['error', 'always', { null: 'ignore' }],
 
     // ========== TypeScript 核心（安全 + 舒服） ==========
     '@typescript-eslint/explicit-function-return-type': 'off',
@@ -48,10 +50,13 @@ module.exports = {
     '@typescript-eslint/no-unnecessary-type-assertion': 'error',
     '@typescript-eslint/prefer-nullish-coalescing': 'warn',
     '@typescript-eslint/prefer-optional-chain': 'error',
-    '@typescript-eslint/no-unnecessary-condition': 'error',
+    '@typescript-eslint/no-unnecessary-condition': 'warn',
 
     '@typescript-eslint/no-non-null-assertion': 'warn',
     '@typescript-eslint/strict-boolean-expressions': 'off',
+    '@typescript-eslint/switch-exhaustiveness-check': 'error',
+    '@typescript-eslint/no-shadow': ['error', { allow: ['_', '__'] }],
+    '@typescript-eslint/no-meaningless-void-operator': 'error',
 
     // ========== 代码风格 ==========
     '@typescript-eslint/naming-convention': [
@@ -127,6 +132,8 @@ module.exports = {
     // 配置文件宽松
     {
       files: ['*.config.js', '.eslintrc.js'],
+      parser: 'espree',
+      parserOptions: { ecmaVersion: 2021 },
       rules: {
         '@typescript-eslint/*': 'off'
       }
@@ -143,7 +150,7 @@ module.exports = {
         '@typescript-eslint/no-unsafe-return': 'off',
         '@typescript-eslint/no-unsafe-argument': 'off',
         '@typescript-eslint/require-await': 'off',
-        '@typescript-eslint/no-floating-promises': 'off',
+        '@typescript-eslint/no-floating-promises': 'warn',
         '@typescript-eslint/no-misused-promises': 'off',
         '@typescript-eslint/no-unused-vars': 'off',
         '@typescript-eslint/no-var-requires': 'off',

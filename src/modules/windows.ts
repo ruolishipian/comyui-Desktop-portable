@@ -3,13 +3,15 @@
  * 集中管理所有窗口的创建、销毁、状态
  */
 
-import * as fs from 'fs';
+
+import fs from 'fs';
 
 import { BrowserWindow, dialog, Menu, app, nativeImage, NativeImage, session } from 'electron';
 
 import { WindowType, WindowConfig } from '../types';
 
 import { configManager } from './config';
+import { httpProxyServer } from './http-proxy';
 import { createFileOperationMenuItems } from './menu-utils';
 import { PATHS } from './paths';
 import { stateManager } from './state';
@@ -103,14 +105,15 @@ export class WindowManager {
       webPreferences: {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
-        contextIsolation: true
+        contextIsolation: true,
+        sandbox: true
       },
       title: 'ComfyUI 便携环境配置',
       show: false,
       autoHideMenuBar: true
     });
 
-    void win.loadFile(PATHS.SELECT_ENV_HTML());
+    void win.loadURL(`${httpProxyServer.url}/shell/env-select`);
     win.on('ready-to-show', () => win.show());
     win.on('closed', () => {
       this._windows.delete('envSelect');
@@ -163,15 +166,14 @@ export class WindowManager {
       center: windowConfig.x === null && windowConfig.y === null,
       icon: getAppIcon(),
       webPreferences: {
-        preload: PATHS.PRELOAD_JS,
-        // ========== Chrome 环境模拟配置 ==========
-        nodeIntegration: false, // 禁用 Node 集成（Chrome 无此功能）
-        contextIsolation: true, // 开启上下文隔离（preload 需要）
-        sandbox: false, // 关闭沙箱，让 Vue/React 事件能正常传递
-        webSecurity: false, // 关闭 Web 安全策略，让跨域资源正常加载
-        allowRunningInsecureContent: false, // 禁止不安全内容（Chrome 默认）
-        webviewTag: true, // 支持 webview 标签，提高插件兼容性
-        devTools: true // 显式启用开发者工具
+        preload: PATHS.PRELOAD_MAIN_JS,
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+        webSecurity: true,
+        allowRunningInsecureContent: false,
+        webviewTag: true,
+        devTools: true
       },
       show: false,
       title: 'ComfyUI桌面-便携包',
@@ -182,7 +184,7 @@ export class WindowManager {
       win.maximize();
     }
 
-    void win.loadFile(PATHS.LOADING_HTML());
+    void win.loadURL(`${httpProxyServer.url}/shell/loading`);
 
     // 窗口关闭逻辑 - 优化响应速度
     win.on('close', e => {
@@ -213,7 +215,7 @@ export class WindowManager {
           maximized: win.isMaximized()
         };
         // 异步保存，不等待完成
-        void configManager.set('window', newConfig);
+        configManager.set('window', newConfig);
       }
 
       // 检查是否启用最小化到托盘
@@ -243,93 +245,8 @@ export class WindowManager {
 
     // 页面加载完成后触发 ready 事件
     win.webContents.on('did-finish-load', () => {
-      // 确保缩放比例为 100%，与浏览器行为一致
       win.webContents.setZoomFactor(1.0);
 
-      // ========== Chrome 环境模拟 ==========
-      win.webContents
-        .executeJavaScript(
-          `
-        // 1. 覆盖 Electron 环境检测
-        window.electron = undefined;
-        window.process = undefined;
-        try { delete window.isElectron; } catch(e) {}
-        
-        // 2. 强制使用 Chrome 用户代理（动态获取 Chromium 版本号）
-        try {
-          const chromeVersion = navigator.userAgent.match(/Chrome\\/([\\d.]+)/)?.[1] || '130.0.0.0';
-          Object.defineProperty(navigator, 'userAgent', {
-            get: () =>
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-              '(KHTML, like Gecko) Chrome/' + chromeVersion + ' Safari/537.36'
-          });
-        } catch(e) {}
-        
-        // 3. 确保 window.parent 指向 window（解决 iframe 通信问题）
-        try {
-          if (window.parent !== window) {
-            Object.defineProperty(window, 'parent', {
-              get: () => window,
-              set: () => {}
-            });
-          }
-        } catch(e) {}
-        
-        // 4. 确保 window.top 指向 window
-        try {
-          if (window.top !== window) {
-            Object.defineProperty(window, 'top', {
-              get: () => window,
-              set: () => {}
-            });
-          }
-        } catch(e) {}
-        
-        // 5. 注入修复 CSS
-        const style = document.createElement('style');
-        style.textContent = \`
-          /* 修复 Lora/模型管理面板的字体与布局 */
-          .lora-manager, .lora-card, .lora-info-panel, .model-card, .model-info-panel,
-          [class*="lora-card"], [class*="model-card"], [class*="info-panel"] {
-            font-size: 14px !important;
-            box-sizing: border-box !important;
-          }
-          
-          /* 修复预览卡片字体太小的问题 - 覆盖 0.55em */
-          .lora_catd_content, .lora-detail__content, .lora-detail__body,
-          .lora-detail__title, .lora-detail__table, .lora-detail__tags {
-            font-size: 14px !important;
-          }
-          
-          /* 确保预览图容器充满，避免文字溢出 */
-          .lora-preview-container, .preview-image-wrapper, .model-preview-container,
-          [class*="preview-container"], [class*="preview-wrapper"] {
-            width: 100% !important;
-            height: 100% !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-          }
-          
-          /* 修复弹窗遮罩层 */
-          .modal-backdrop, .el-dialog__wrapper {
-            background: rgba(0,0,0,0.7) !important;
-          }
-          
-          /* 消除 Electron 的默认滚动条差异 */
-          body, html {
-            overflow: auto !important;
-            scrollbar-width: thin !important;
-          }
-        \`;
-        document.head.appendChild(style);
-      `
-        )
-        .catch(() => {
-          // 忽略执行错误
-        });
-
-      // 注入CSS修复Electron启动器中的交互问题
       this._injectLayoutFixCSS(win);
       this._notifyEvent('ready', 'main');
     });
@@ -337,6 +254,10 @@ export class WindowManager {
     // ========== 新窗口处理 ==========
     // 让外部链接用系统浏览器打开，内部链接由页面自己处理
     win.webContents.setWindowOpenHandler(({ url }) => {
+      const proxyUrl = httpProxyServer.url;
+      if (url.startsWith(proxyUrl) || url.startsWith('http://127.0.0.1:') || url.startsWith('http://localhost:')) {
+        return { action: 'allow' };
+      }
       if (url.startsWith('http://') || url.startsWith('https://')) {
         void import('electron').then(({ shell }) => {
           shell.openExternal(url).catch(() => {});
@@ -372,14 +293,15 @@ export class WindowManager {
       webPreferences: {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
-        contextIsolation: true
+        contextIsolation: true,
+        sandbox: true
       },
       title: 'ComfyUI 实时日志',
       show: false,
       autoHideMenuBar: true
     });
 
-    void win.loadFile(PATHS.LOG_HTML());
+    void win.loadURL(`${httpProxyServer.url}/shell/logs`);
     win.on('ready-to-show', () => win.show());
     win.on('closed', () => {
       this._windows.delete('log');
@@ -415,7 +337,8 @@ export class WindowManager {
       webPreferences: {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
-        contextIsolation: true
+        contextIsolation: true,
+        sandbox: true
       },
       title: 'ComfyUI 设置',
       show: false,
@@ -423,7 +346,7 @@ export class WindowManager {
       autoHideMenuBar: true
     });
 
-    void win.loadFile(PATHS.SETTINGS_HTML());
+    void win.loadURL(`${httpProxyServer.url}/shell/settings`);
     win.on('ready-to-show', () => win.show());
     win.on('closed', () => {
       this._windows.delete('settings');
@@ -470,7 +393,12 @@ export class WindowManager {
         label: '刷新页面',
         click: () => {
           if (win.isDestroyed()) return;
-          win.webContents.reloadIgnoringCache();
+          const proxyUrl = httpProxyServer.url;
+          void win.loadURL('about:blank').then(() => {
+            if (!win.isDestroyed()) {
+              void win.loadURL(proxyUrl);
+            }
+          });
         }
       },
       {
@@ -483,7 +411,11 @@ export class WindowManager {
             } catch (err) {
               console.error('[WindowManager] 强制刷新失败:', err);
             }
-            win.webContents.reloadIgnoringCache();
+            const proxyUrl = httpProxyServer.url;
+            await win.loadURL('about:blank');
+            if (!win.isDestroyed()) {
+              void win.loadURL(proxyUrl);
+            }
           })();
         }
       },
@@ -527,10 +459,21 @@ export class WindowManager {
   public loadPage(windowType: WindowType, page: string): void {
     const win = this._windows.get(windowType);
     if (win && !win.isDestroyed()) {
+      const proxyUrl = httpProxyServer.url;
       if (page.startsWith('http')) {
         void win.loadURL(page);
+      } else if (page.endsWith('.html')) {
+        const shellRoutes: Record<string, string> = {
+          'loading.html': '/shell/loading',
+          'error.html': '/shell/error',
+          'settings.html': '/shell/settings',
+          'log.html': '/shell/logs',
+          'select-env.html': '/shell/env-select'
+        };
+        const route = shellRoutes[page] ?? `/shell/${page.replace('.html', '')}`;
+        void win.loadURL(`${proxyUrl}${route}`);
       } else {
-        void win.loadFile(PATHS.ASSETS_DIR(page));
+        void win.loadURL(`${proxyUrl}/${page}`);
       }
     }
   }

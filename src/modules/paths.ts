@@ -75,6 +75,13 @@ export function getPreloadPath(): string {
 }
 
 /**
+ * 获取主窗口专用 preload.js 的绝对路径（精简版，只暴露只读 API）
+ */
+export function getMainPreloadPath(): string {
+  return path.join(__dirname, '../preload-main.js');
+}
+
+/**
  * 常用路径常量
  */
 export const PATHS = {
@@ -91,6 +98,7 @@ export const PATHS = {
 
   // preload 路径
   PRELOAD_JS: getPreloadPath(),
+  PRELOAD_MAIN_JS: getMainPreloadPath(),
 
   // assets 目录
   ASSETS_DIR: (...segments: string[]): string => getAssetsPath(...segments)

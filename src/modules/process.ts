@@ -400,7 +400,7 @@ comfyui_portable:
       logger.warn('ComfyUI 进程已在运行，先停止旧进程');
       this.stop();
       // 等待进程完全停止
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 3000));
     }
 
     // 检查并清理端口占用（在环境检查之前）
@@ -417,7 +417,7 @@ comfyui_portable:
     // 清理数据库锁文件（防止重启时数据库锁定问题）
     const comfyuiPath = configManager.get('comfyuiPath');
     if (comfyuiPath) {
-      await this._cleanDatabaseLockFiles(comfyuiPath);
+      this._cleanDatabaseLockFiles(comfyuiPath);
     }
 
     // 环境检查
@@ -426,13 +426,11 @@ comfyui_portable:
 
     // 处理检查结果
     for (const check of checks) {
-      // 将 CheckType 转换为 LogLevel
       const logLevel: LogLevel = check.type === 'error' ? 'error' : check.type === 'warn' ? 'warn' : 'info';
       logger.log(check.msg, logLevel);
       if (check.type === 'error') {
         dialog.showErrorBox('环境检查失败', check.msg);
       } else if (check.type === 'warn') {
-        // 使用异步对话框，避免阻塞
         dialog
           .showMessageBox({
             type: 'warning',
@@ -463,10 +461,8 @@ comfyui_portable:
     try {
       const { args, port } = await this._buildArguments();
       const pythonPath = configManager.get('pythonPath');
-      const comfyuiPath = configManager.get('comfyuiPath');
       const envArgs = configManager.get('envArgs') ?? '';
       const envVars = configManager.get('envVars') ?? '';
-      const serverConfig = configManager.server;
 
       // 验证路径
       if (pythonPath === undefined || pythonPath === '' || comfyuiPath === undefined || comfyuiPath === '') {
@@ -795,7 +791,9 @@ comfyui_portable:
       } else {
         // 网络错误等
         const errorMessage = error?.message ?? '未知错误';
-        logger.warn(`ComfyUI 服务暂时无响应: ${errorMessage}（连续失败: ${this._consecutiveFailures + 1}/${this._maxConsecutiveFailures}）`);
+        logger.warn(
+          `ComfyUI 服务暂时无响应: ${errorMessage}（连续失败: ${this._consecutiveFailures + 1}/${this._maxConsecutiveFailures}）`
+        );
       }
       this._consecutiveFailures++;
 
@@ -934,21 +932,23 @@ comfyui_portable:
     this._process = null;
     stateManager.pid = null;
 
-    // 手动停止
+    // 手动停止（由 stop() 触发）
     if (stateManager.isManualStop) {
-      stateManager.status = Status.STOPPED;
-      this._notifyStatusChange();
-      logger.info('ComfyUI进程已手动停止');
+      // stop() 的 cleanup 会处理状态，这里只记录日志
+      logger.info('ComfyUI进程已退出（手动停止）');
       return;
     }
 
-    // 如果当前已经是失败状态（比如启动超时），不再尝试重启
-    if (currentStatus === Status.FAILED) {
-      logger.warn('进程退出时状态已为失败，跳过自动重启');
+    // 如果当前已经是失败状态或正在重启中，不再尝试重启
+    // RESTARTING: restart() 会自己完成重启流程
+    // FAILED: _handleStartupFailure 已经处理过
+    // STOPPING: stop() 的 cleanup 会处理
+    if (currentStatus === Status.FAILED || currentStatus === Status.RESTARTING || currentStatus === Status.STOPPING) {
+      logger.warn(`进程退出时状态为 ${currentStatus}，跳过自动重启`);
       return;
     }
 
-    // 自动重启
+    // 自动重启（仅在意外退出时触发）
     const autoRestart = configManager.server.autoRestart ?? false;
     if (autoRestart && wasRunning && stateManager.restartAttempts < stateManager.maxRestartAttempts) {
       // 检查冷却时间
@@ -1094,10 +1094,10 @@ comfyui_portable:
   }
 
   // 清理数据库锁文件
-  private async _cleanDatabaseLockFiles(comfyuiPath: string): Promise<void> {
+  private _cleanDatabaseLockFiles(comfyuiPath: string): void {
     const userDirectory = path.join(comfyuiPath, 'user');
     const dbPath = path.join(userDirectory, 'comfyui.db');
-    
+
     const lockFiles = [
       `${dbPath}-journal`,
       `${dbPath}-wal`,
@@ -1110,9 +1110,9 @@ comfyui_portable:
       path.join(userDirectory, `comfyui_${port}.log`),
       path.join(userDirectory, `comfyui_${port}.prev.log`)
     ];
-    
+
     const allFiles = [...lockFiles, ...managerLogFiles];
-    
+
     for (const lockFile of allFiles) {
       try {
         if (fsSync.existsSync(lockFile)) {
@@ -1141,9 +1141,8 @@ comfyui_portable:
     const currentStatus = stateManager.status;
     const isRunning = currentStatus === Status.RUNNING || currentStatus === Status.STARTING;
 
-    // 设置重启状态
+    // 设置重启状态（在 stop() 之前设置，防止 _handleExit 触发自动重启）
     stateManager.status = Status.RESTARTING;
-    stateManager.setManualStop(false);
     stateManager.resetRestartAttempts();
     this._notifyStatusChange();
 
@@ -1151,17 +1150,16 @@ comfyui_portable:
     if (isRunning && this._process && !this._process.killed) {
       logger.info(`重启 ComfyUI：当前状态为 ${currentStatus}，先停止进程 PID: ${this._process.pid}`);
 
-      // 停止进程
+      // 停止进程（isManualStop 由 stop() 设置，_handleExit 会检查 RESTARTING 状态跳过自动重启）
       this.stop();
 
-      // 等待进程完全停止（最多等待8秒，从5秒增加）
-      const maxWaitTime = 8000;
-      const checkInterval = 100;
+      // 等待进程完全停止（最多等待10秒）
+      const maxWaitTime = 10000;
+      const checkInterval = 200;
       let waited = 0;
 
       while (waited < maxWaitTime) {
-        // 检查进程是否已停止（进程对象为空或已被标记为 killed）
-        // 注意：this._process 可能在 stop() 调用后被修改，所以需要重新检查
+        // stop() 的 cleanup 回调会异步修改 this._process，所以需要重新检查
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (!this._process || this._process.killed) {
           logger.info('重启：旧进程已完全停止');
@@ -1171,22 +1169,23 @@ comfyui_portable:
         waited += checkInterval;
       }
 
-      // 如果超时仍未停止，强制清理
-      // 注意：this._process 可能在等待期间被修改
+      // 如果超时仍未停止，强制杀死进程
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (this._process && !this._process.killed) {
-        logger.warn('重启：等待进程停止超时，强制清理');
+        logger.warn('重启：等待进程停止超时，强制杀死进程');
+        if (this._process.pid !== undefined) {
+          kill(this._process.pid, 'SIGKILL', () => {});
+        }
         this._process = null;
       }
-      
-      // 额外等待时间，确保数据库锁完全释放
-      logger.info('等待文件句柄释放...');
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
+      // 等待端口完全释放（进程退出后端口可能还在 TIME_WAIT 状态）
+      logger.info('等待端口释放...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
       // 清理数据库锁文件
       const comfyuiPath = configManager.get('comfyuiPath');
       if (comfyuiPath) {
-        await this._cleanDatabaseLockFiles(comfyuiPath);
+        this._cleanDatabaseLockFiles(comfyuiPath);
       }
     } else if (!this._process || this._process.killed) {
       logger.info('重启 ComfyUI：没有运行中的进程，直接启动');
@@ -1201,6 +1200,8 @@ comfyui_portable:
     const cleanResult = await environmentChecker.checkAndCleanPort(targetPort);
     if (cleanResult.cleaned) {
       logger.info(`已清理占用端口 ${targetPort} 的进程: PID ${cleanResult.pids.join(', ')}`);
+      // 清理后额外等待端口释放
+      await new Promise(resolve => setTimeout(resolve, 1000));
     } else if (cleanResult.error) {
       logger.warn(`端口 ${targetPort} 清理失败: ${cleanResult.error}，将尝试使用其他端口`);
     }
@@ -1249,6 +1250,7 @@ comfyui_portable:
       });
       this._process = null;
       stateManager.status = Status.STOPPED;
+      this._notifyStatusChange();
     }
   }
 
