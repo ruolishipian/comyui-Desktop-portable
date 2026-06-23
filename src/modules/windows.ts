@@ -175,7 +175,7 @@ export class WindowManager {
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: false,
-        webSecurity: true,
+        webSecurity: false,
         allowRunningInsecureContent: false,
         webviewTag: true,
         devTools: true,
@@ -432,10 +432,11 @@ export class WindowManager {
         label: '刷新页面',
         click: () => {
           if (win.isDestroyed()) return;
-          const proxyUrl = httpProxyServer.url;
+          const port = stateManager.port;
+          const targetUrl = port ? `http://127.0.0.1:${port}` : httpProxyServer.url;
           void win.loadURL('about:blank').then(() => {
             if (!win.isDestroyed()) {
-              void win.loadURL(proxyUrl);
+              void win.loadURL(targetUrl);
             }
           });
         }
@@ -450,10 +451,11 @@ export class WindowManager {
             } catch (err) {
               console.error('[WindowManager] 强制刷新失败:', err);
             }
-            const proxyUrl = httpProxyServer.url;
+            const port = stateManager.port;
+            const targetUrl = port ? `http://127.0.0.1:${port}` : httpProxyServer.url;
             await win.loadURL('about:blank');
             if (!win.isDestroyed()) {
-              void win.loadURL(proxyUrl);
+              void win.loadURL(targetUrl);
             }
           })();
         }

@@ -178,11 +178,11 @@ function setupStateListeners(): void {
  */
 function handleStatusChange(data: StateData): void {
   const { status, port } = data;
-  const proxyUrl = httpProxyServer.url;
+
 
   if (status === Status.RUNNING && port) {
     httpProxyServer.updateComfyuiPort(port);
-    windowManager.loadPage('main', proxyUrl);
+    windowManager.loadPage('main', `http://127.0.0.1:${port}`);
   } else if (status === Status.STOPPED || status === Status.STARTING) {
     httpProxyServer.updateComfyuiPort(0);
     windowManager.loadPage('main', 'loading.html');
