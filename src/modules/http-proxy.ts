@@ -16,6 +16,7 @@
 
 import * as fs from 'fs';
 import http from 'http';
+import net from 'net';
 import path from 'path';
 import { Duplex } from 'stream';
 
@@ -310,7 +311,7 @@ export class HttpProxyServer {
     });
   }
 
-  private _handleUpgrade(req: http.IncomingMessage, socket: Duplex, _head: Buffer): void {
+  private _handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): void {
     if (this._comfyuiPort <= 0) {
       socket.destroy();
       return;
@@ -318,53 +319,65 @@ export class HttpProxyServer {
 
     const targetHost = '127.0.0.1';
     const targetPort = this._comfyuiPort;
+    const targetPath = req.url ?? '/ws';
 
-    const proxyReq = http.request(
-      {
-        hostname: targetHost,
-        port: targetPort,
-        path: req.url ?? '/ws',
-        method: 'GET',
-        headers: {
-          ...req.headers,
-          host: `${targetHost}:${targetPort}`,
-          origin: `http://${targetHost}:${targetPort}`,
-          upgrade: 'websocket',
-          connection: 'Upgrade'
+    const headers: string[] = [
+      `GET ${targetPath} HTTP/1.1`,
+      `Host: ${targetHost}:${targetPort}`,
+      'Upgrade: websocket',
+      'Connection: Upgrade'
+    ];
+
+    for (const [key, value] of Object.entries(req.headers)) {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey === 'host' || lowerKey === 'connection' || lowerKey === 'upgrade') {
+        continue;
+      }
+      if (Array.isArray(value)) {
+        for (const v of value) {
+          headers.push(`${key}: ${v}`);
         }
+      } else if (value) {
+        headers.push(`${key}: ${value}`);
       }
-    );
+    }
 
-    proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
-      socket.write(
-        'HTTP/1.1 101 Switching Protocols\r\n' +
-        'Upgrade: websocket\r\n' +
-        'Connection: Upgrade\r\n' +
-        'Sec-WebSocket-Accept: ' + (proxyRes.headers['sec-websocket-accept'] ?? '') + '\r\n' +
-        '\r\n'
-      );
+    headers.push(`Origin: http://${targetHost}:${targetPort}`);
+    headers.push('', '');
 
-      if (proxyHead.length > 0) {
-        socket.write(proxyHead);
+    const targetSocket = net.createConnection(targetPort, targetHost, () => {
+      targetSocket.write(headers.join('\r\n'));
+
+      if (head.length > 0) {
+        targetSocket.write(head);
       }
-
-      proxySocket.pipe(socket, { end: true });
-      socket.pipe(proxySocket, { end: true });
-
-      proxySocket.on('error', () => {
-        socket.destroy();
-      });
-      socket.on('error', () => {
-        proxySocket.destroy();
-      });
     });
 
-    proxyReq.on('error', (err: Error) => {
-      logger.warn(`WebSocket 代理失败: ${err.message}`);
+    targetSocket.on('data', (chunk: Buffer) => {
+      socket.write(chunk);
+    });
+
+    socket.on('data', (chunk: Buffer) => {
+      targetSocket.write(chunk);
+    });
+
+    targetSocket.on('error', (err: Error) => {
+      logger.warn(`WebSocket 代理目标连接错误: ${err.message}`);
       socket.destroy();
     });
 
-    proxyReq.end();
+    socket.on('error', (err: Error) => {
+      logger.warn(`WebSocket 代理客户端连接错误: ${err.message}`);
+      targetSocket.destroy();
+    });
+
+    targetSocket.on('close', () => {
+      socket.destroy();
+    });
+
+    socket.on('close', () => {
+      targetSocket.destroy();
+    });
   }
 }
 
