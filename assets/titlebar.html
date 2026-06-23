@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ComfyUI 标题栏</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        background: #1a1a2e;
+        color: #e0e0e0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 12px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        padding: 0 8px;
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 600;
+        font-size: 13px;
+        color: #fff;
+      }
+      .logo-icon {
+        width: 16px;
+        height: 16px;
+        background: #6366f1;
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: 700;
+      }
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #6b7280;
+        margin-left: 8px;
+      }
+      .status-dot.running { background: #22c55e; }
+      .status-dot.starting { background: #f59e0b; animation: pulse 1s infinite; }
+      .status-dot.stopped { background: #6b7280; }
+      .status-dot.failed { background: #ef4444; }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+      .actions {
+        display: flex;
+        gap: 2px;
+        margin-left: auto;
+        -webkit-app-region: no-drag;
+      }
+      .btn {
+        padding: 4px 10px;
+        border: none;
+        border-radius: 3px;
+        background: transparent;
+        color: #9ca3af;
+        cursor: pointer;
+        font-size: 11px;
+        transition: all 0.15s;
+      }
+      .btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+      .btn.active { background: rgba(99,102,241,0.3); color: #818cf8; }
+    </style>
+  </head>
+  <body>
+    <div class="logo">
+      <div class="logo-icon">C</div>
+      <span>ComfyUI 便携版</span>
+      <div class="status-dot" id="status-dot"></div>
+    </div>
+    <div class="actions">
+      <button class="btn" id="btn-logs" title="日志">日志</button>
+      <button class="btn" id="btn-settings" title="设置">设置</button>
+      <button class="btn" id="btn-restart" title="重启">重启</button>
+    </div>
+    <script>
+      var btnLogs = document.getElementById('btn-logs');
+      var btnSettings = document.getElementById('btn-settings');
+      var btnRestart = document.getElementById('btn-restart');
+      var statusDot = document.getElementById('status-dot');
+
+      btnLogs.addEventListener('click', function () {
+        btnLogs.classList.toggle('active');
+        if (window.electronAPI) {
+          window.electronAPI.send('toggle-panel', 'logs');
+        }
+      });
+
+      btnSettings.addEventListener('click', function () {
+        btnSettings.classList.toggle('active');
+        if (window.electronAPI) {
+          window.electronAPI.send('toggle-panel', 'settings');
+        }
+      });
+
+      btnRestart.addEventListener('click', function () {
+        if (window.electronAPI) {
+          window.electronAPI.send('request-restart');
+        }
+      });
+
+      if (window.electronAPI) {
+        window.electronAPI.on('statusUpdate', function (_, data) {
+          statusDot.className = 'status-dot ' + data.status;
+        });
+      }
+    </script>
+  </body>
+</html>

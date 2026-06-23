@@ -22,7 +22,9 @@ import {
   proxyManager,
   handleError
 } from './modules';
+import { autoUpdateManager } from './modules/auto-update';
 import { httpProxyServer } from './modules/http-proxy';
+import { terminalManager } from './modules/terminal';
 import { StateData } from './types';
 
 // ========== Chrome 环境模拟配置 ==========
@@ -123,6 +125,9 @@ function initializeModules(): void {
 
   // 6. 设置状态监听
   setupStateListeners();
+
+  // 7. 初始化自动更新
+  autoUpdateManager.init();
 
   logger.info('ComfyUI便携桌面版启动（模块化版本 - TypeScript）');
 }
@@ -376,6 +381,8 @@ app.on('before-quit', event => {
         logger.info('ComfyUI 便携桌面版退出');
         trayManager.destroy();
         httpProxyServer.stop();
+        autoUpdateManager.destroy();
+        terminalManager.destroy();
         windowManager.closeAll();
         app.exit(0);
       } else {
@@ -391,6 +398,8 @@ app.on('before-quit', event => {
     logger.info('ComfyUI 便携桌面版开始退出');
     trayManager.destroy();
     httpProxyServer.stop();
+    autoUpdateManager.destroy();
+    terminalManager.destroy();
     windowManager.closeAll();
     app.exit(0);
   }

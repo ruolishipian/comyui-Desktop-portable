@@ -29,7 +29,9 @@ const SHELL_ROUTES: Record<string, string> = {
   '/shell/error': 'error.html',
   '/shell/settings': 'settings.html',
   '/shell/logs': 'log.html',
-  '/shell/env-select': 'select-env.html'
+  '/shell/env-select': 'select-env.html',
+  '/shell/titlebar': 'titlebar.html',
+  '/shell/terminal': 'terminal.html'
 };
 
 const HTML_CONTENT_TYPES: Record<string, string> = {

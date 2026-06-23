@@ -60,6 +60,10 @@ export class WindowManager {
   private _messageQueue: Map<WindowType, QueuedMessage[]> = new Map();
   // 渲染进程就绪状态
   private _rendererReady: Map<WindowType, boolean> = new Map();
+  // 加载重试计数
+  private _loadRetryCount: Map<WindowType, number> = new Map();
+  private static readonly MAX_LOAD_RETRIES = 5;
+  private static readonly BASE_RETRY_DELAY_MS = 1000;
 
   // 设置窗口事件回调
   public setOnWindowEvent(callback: WindowEventCallback): void {
@@ -106,7 +110,8 @@ export class WindowManager {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
         contextIsolation: true,
-        sandbox: true
+        sandbox: true,
+        partition: 'persist:comfyui-shell'
       },
       title: 'ComfyUI 便携环境配置',
       show: false,
@@ -173,7 +178,8 @@ export class WindowManager {
         webSecurity: true,
         allowRunningInsecureContent: false,
         webviewTag: true,
-        devTools: true
+        devTools: true,
+        partition: 'persist:comfyui-main'
       },
       show: false,
       title: 'ComfyUI桌面-便携包',
@@ -245,10 +251,41 @@ export class WindowManager {
 
     // 页面加载完成后触发 ready 事件
     win.webContents.on('did-finish-load', () => {
+      this._loadRetryCount.delete('main');
       win.webContents.setZoomFactor(1.0);
 
       this._injectLayoutFixCSS(win);
       this._notifyEvent('ready', 'main');
+    });
+
+    // 加载失败自动重试（带指数退避）
+    win.webContents.on('did-fail-load', (_event, errorCode, errorDesc, validatedURL) => {
+      if (win.isDestroyed()) return;
+      if (validatedURL === 'about:blank') return;
+
+      const retryCount = this._loadRetryCount.get('main') ?? 0;
+      if (retryCount >= WindowManager.MAX_LOAD_RETRIES) {
+        console.error(
+          '[WindowManager] 主页面加载失败，已达最大重试次数 ' +
+          `${WindowManager.MAX_LOAD_RETRIES}: ${errorDesc} (${errorCode})`
+        );
+        void win.loadURL(`${httpProxyServer.url}/shell/error`);
+        return;
+      }
+
+      const delay = WindowManager.BASE_RETRY_DELAY_MS * Math.pow(2, retryCount);
+      this._loadRetryCount.set('main', retryCount + 1);
+      console.warn(
+        '[WindowManager] 主页面加载失败 ' +
+        `(${retryCount + 1}/${WindowManager.MAX_LOAD_RETRIES}): ` +
+        `${errorDesc} (${errorCode}), ${delay}ms 后重试`
+      );
+
+      setTimeout(() => {
+        if (!win.isDestroyed()) {
+          void win.loadURL(validatedURL);
+        }
+      }, delay);
     });
 
     // ========== 新窗口处理 ==========
@@ -294,7 +331,8 @@ export class WindowManager {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
         contextIsolation: true,
-        sandbox: true
+        sandbox: true,
+        partition: 'persist:comfyui-shell'
       },
       title: 'ComfyUI 实时日志',
       show: false,
@@ -338,7 +376,8 @@ export class WindowManager {
         preload: PATHS.PRELOAD_JS,
         nodeIntegration: false,
         contextIsolation: true,
-        sandbox: true
+        sandbox: true,
+        partition: 'persist:comfyui-shell'
       },
       title: 'ComfyUI 设置',
       show: false,
@@ -468,7 +507,8 @@ export class WindowManager {
           'error.html': '/shell/error',
           'settings.html': '/shell/settings',
           'log.html': '/shell/logs',
-          'select-env.html': '/shell/env-select'
+          'select-env.html': '/shell/env-select',
+          'titlebar.html': '/shell/titlebar'
         };
         const route = shellRoutes[page] ?? `/shell/${page.replace('.html', '')}`;
         void win.loadURL(`${proxyUrl}${route}`);
