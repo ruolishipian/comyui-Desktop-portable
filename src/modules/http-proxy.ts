@@ -364,11 +364,17 @@ export class HttpProxyServer {
     });
 
     targetSocket.on('error', (err: Error) => {
+      if (err.message.includes('ECONNRESET') || err.message.includes('EPIPE') || err.message.includes('ETIMEDOUT')) {
+        return;
+      }
       logger.warn(`WebSocket 代理目标连接错误: ${err.message}`);
       socket.destroy();
     });
 
     socket.on('error', (err: Error) => {
+      if (err.message.includes('ECONNRESET') || err.message.includes('EPIPE')) {
+        return;
+      }
       logger.warn(`WebSocket 代理客户端连接错误: ${err.message}`);
       targetSocket.destroy();
     });
