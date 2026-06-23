@@ -37,14 +37,32 @@ const IPC_CHANNELS = {
   // 应用生命周期
   RESTART_APP: 'restartApp',
   QUIT_APP: 'quitApp',
+  // 缓存管理
+  CLEAR_BROWSER_CACHE: 'clearBrowserCache',
+  CLEAR_STORAGE_DATA: 'clearStorageData',
+  // 状态查询
+  GET_STATUS: 'getStatus',
   // 事件通道
   STATUS_UPDATE: 'statusUpdate',
   LOG_UPDATE: 'logUpdate',
-  APP_CLOSING: 'appClosing'
+  APP_CLOSING: 'appClosing',
+  // 终端
+  TERMINAL_CREATE: 'terminal:create',
+  TERMINAL_WRITE: 'terminal:write',
+  TERMINAL_RESIZE: 'terminal:resize',
+  TERMINAL_KILL: 'terminal:kill',
+  TERMINAL_DATA: 'terminal:data',
+  TERMINAL_EXIT: 'terminal:exit'
 } as const;
 
 // 接收通道白名单
-const RECEIVE_CHANNELS = [IPC_CHANNELS.LOG_UPDATE, IPC_CHANNELS.STATUS_UPDATE, IPC_CHANNELS.APP_CLOSING] as const;
+const RECEIVE_CHANNELS = [
+  IPC_CHANNELS.LOG_UPDATE,
+  IPC_CHANNELS.STATUS_UPDATE,
+  IPC_CHANNELS.APP_CLOSING,
+  IPC_CHANNELS.TERMINAL_DATA,
+  IPC_CHANNELS.TERMINAL_EXIT
+] as const;
 
 // 暴露 ComfyUI Desktop API
 contextBridge.exposeInMainWorld('comfyuiDesktop', {
@@ -89,7 +107,26 @@ contextBridge.exposeInMainWorld('comfyuiDesktop', {
   openLogs: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.OPEN_LOGS) as Promise<void>,
 
   // 渲染进程就绪信号
-  rendererReady: (): void => ipcRenderer.send(IPC_CHANNELS.RENDERER_READY)
+  rendererReady: (): void => ipcRenderer.send(IPC_CHANNELS.RENDERER_READY),
+
+  // 终端
+  terminalCreate: (cols: number, rows: number): Promise<number | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_CREATE, cols, rows) as Promise<number | null>,
+  terminalWrite: (sessionId: number, data: string): void =>
+    ipcRenderer.send(IPC_CHANNELS.TERMINAL_WRITE, sessionId, data),
+  terminalResize: (sessionId: number, cols: number, rows: number): void =>
+    ipcRenderer.send(IPC_CHANNELS.TERMINAL_RESIZE, sessionId, cols, rows),
+  terminalKill: (sessionId: number): void =>
+    ipcRenderer.send(IPC_CHANNELS.TERMINAL_KILL, sessionId),
+
+  // 缓存管理
+  clearBrowserCache: (): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CLEAR_BROWSER_CACHE) as Promise<boolean>,
+  clearStorageData: (): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CLEAR_STORAGE_DATA) as Promise<boolean>,
+
+  // 状态查询
+  getStatus: (): Promise<unknown> => ipcRenderer.invoke(IPC_CHANNELS.GET_STATUS) as Promise<unknown>
 });
 
 // 暴露事件监听 API

@@ -123,7 +123,7 @@ describe('IPC 异常场景测试', () => {
     mockProcessManager = new ProcessManager();
     mockTrayManager = new TrayManager();
 
-    ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager);
+    ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager, null as any);
   });
 
   describe('update-config 参数错误场景', () => {

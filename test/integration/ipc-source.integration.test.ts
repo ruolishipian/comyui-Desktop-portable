@@ -118,7 +118,7 @@ describe('IPCManager 源代码集成测试', () => {
 
   describe('依赖设置', () => {
     test('应该能设置依赖', () => {
-      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager);
+      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager, null as any);
       // 不应抛出错误
       expect(true).toBe(true);
     });
@@ -171,7 +171,7 @@ describe('IPCManager 源代码集成测试', () => {
     });
 
     test('update-config 应更新配置', async () => {
-      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager);
+      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager, null as any);
       ipcManager.registerAll();
 
       // 找到 update-config 处理器
@@ -191,7 +191,7 @@ describe('IPCManager 源代码集成测试', () => {
 
   describe('进程处理器', () => {
     test('start-comfyui 应调用 start', async () => {
-      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager);
+      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager, null as any);
       ipcManager.registerAll();
 
       // 找到 start-comfyui 处理器
@@ -206,7 +206,7 @@ describe('IPCManager 源代码集成测试', () => {
     });
 
     test('stop-comfyui 应调用 stop', async () => {
-      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager);
+      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager, null as any);
       ipcManager.registerAll();
 
       // 找到 stop-comfyui 处理器
@@ -221,7 +221,7 @@ describe('IPCManager 源代码集成测试', () => {
     });
 
     test('restart-comfyui 应调用 restart', async () => {
-      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager);
+      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager, null as any);
       ipcManager.registerAll();
 
       // 找到 restart-comfyui 处理器
@@ -238,7 +238,7 @@ describe('IPCManager 源代码集成测试', () => {
 
   describe('状态广播', () => {
     test('应该能广播状态更新', () => {
-      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager);
+      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager, null as any);
 
       // 调用广播方法（通过 update-config）
       ipcManager.registerAll();
@@ -258,7 +258,7 @@ describe('IPCManager 源代码集成测试', () => {
         throw new Error('配置错误');
       });
 
-      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager);
+      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager, null as any);
       ipcManager.registerAll();
 
       const updateConfigCall = (ipcMain.handle as jest.Mock).mock.calls.find(
@@ -281,7 +281,7 @@ describe('IPCManager 源代码集成测试', () => {
 
   describe('日志记录', () => {
     test('配置更新应记录日志', async () => {
-      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager);
+      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager, null as any);
       ipcManager.registerAll();
 
       // 验证 ipcMain.handle 被调用

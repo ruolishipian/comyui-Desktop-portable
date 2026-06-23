@@ -157,7 +157,7 @@ function setupDependencies(): void {
   trayManager.setDependencies(windowManager, processManager);
 
   // IPC 管理器 -> 依赖
-  ipcManager.setDependencies(windowManager, processManager, trayManager);
+  ipcManager.setDependencies(windowManager, processManager, trayManager, terminalManager);
 }
 
 /**
@@ -178,11 +178,11 @@ function setupStateListeners(): void {
  */
 function handleStatusChange(data: StateData): void {
   const { status, port } = data;
-
+  const proxyUrl = httpProxyServer.url;
 
   if (status === Status.RUNNING && port) {
     httpProxyServer.updateComfyuiPort(port);
-    windowManager.loadPage('main', `http://127.0.0.1:${port}`);
+    windowManager.loadPage('main', proxyUrl);
   } else if (status === Status.STOPPED || status === Status.STARTING) {
     httpProxyServer.updateComfyuiPort(0);
     windowManager.loadPage('main', 'loading.html');
@@ -191,6 +191,7 @@ function handleStatusChange(data: StateData): void {
     windowManager.loadPage('main', 'error.html');
   }
 }
+
 
 /**
  * 处理窗口事件

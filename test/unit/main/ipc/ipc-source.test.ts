@@ -103,7 +103,7 @@ describe('IPC 源代码测试', () => {
       const processManager = new ProcessManager();
       const trayManager = new TrayManager();
 
-      ipcManager.setDependencies(windowManager, processManager, trayManager);
+      ipcManager.setDependencies(windowManager, processManager, trayManager, null as any);
 
       expect(true).toBe(true);
     });

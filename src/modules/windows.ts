@@ -175,7 +175,7 @@ export class WindowManager {
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: false,
-        webSecurity: false,
+        webSecurity: true,
         allowRunningInsecureContent: false,
         webviewTag: true,
         devTools: true,
@@ -432,8 +432,7 @@ export class WindowManager {
         label: '刷新页面',
         click: () => {
           if (win.isDestroyed()) return;
-          const port = stateManager.port;
-          const targetUrl = port ? `http://127.0.0.1:${port}` : httpProxyServer.url;
+          const targetUrl = httpProxyServer.url;
           void win.loadURL('about:blank').then(() => {
             if (!win.isDestroyed()) {
               void win.loadURL(targetUrl);
@@ -451,8 +450,7 @@ export class WindowManager {
             } catch (err) {
               console.error('[WindowManager] 强制刷新失败:', err);
             }
-            const port = stateManager.port;
-            const targetUrl = port ? `http://127.0.0.1:${port}` : httpProxyServer.url;
+            const targetUrl = httpProxyServer.url;
             await win.loadURL('about:blank');
             if (!win.isDestroyed()) {
               void win.loadURL(targetUrl);
@@ -510,7 +508,8 @@ export class WindowManager {
           'settings.html': '/shell/settings',
           'log.html': '/shell/logs',
           'select-env.html': '/shell/env-select',
-          'titlebar.html': '/shell/titlebar'
+          'titlebar.html': '/shell/titlebar',
+          'terminal.html': '/shell/terminal'
         };
         const route = shellRoutes[page] ?? `/shell/${page.replace('.html', '')}`;
         void win.loadURL(`${proxyUrl}${route}`);

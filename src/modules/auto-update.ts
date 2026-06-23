@@ -31,7 +31,7 @@ export class AutoUpdateManager {
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.setFeedURL({
       provider: 'github',
-      owner: 'Comfy-Org',
+      owner: 'ruolishipian',
       repo: 'comyui-Desktop-portable'
     });
 

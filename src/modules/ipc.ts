@@ -12,6 +12,7 @@ import { typedHandle, IPC_CHANNELS } from './ipc-types';
 import { logger } from './logger';
 import { ProcessManager } from './process';
 import { stateManager } from './state';
+import { TerminalManager } from './terminal';
 import { TrayManager } from './tray';
 import { WindowManager } from './windows';
 
@@ -98,12 +99,19 @@ export class IPCManager {
   private _windowManager: WindowManager | null = null;
   private _processManager: ProcessManager | null = null;
   private _trayManager: TrayManager | null = null;
+  private _terminalManager: TerminalManager | null = null;
 
   // 设置依赖
-  public setDependencies(windowManager: WindowManager, processManager: ProcessManager, trayManager: TrayManager): void {
+  public setDependencies(
+    windowManager: WindowManager,
+    processManager: ProcessManager,
+    trayManager: TrayManager,
+    terminalManager: TerminalManager
+  ): void {
     this._windowManager = windowManager;
     this._processManager = processManager;
     this._trayManager = trayManager;
+    this._terminalManager = terminalManager;
   }
 
   // 注册所有 IPC 处理器
@@ -122,6 +130,10 @@ export class IPCManager {
     this._registerWindowStateHandlers();
     // 缓存管理
     this._registerCacheHandlers();
+    // 终端
+    this._registerTerminalHandlers();
+    // 状态查询
+    this._registerStatusHandlers();
   }
 
   // 注册配置处理器
@@ -396,6 +408,43 @@ export class IPCManager {
     if (this._windowManager) {
       this._windowManager.broadcast(IPC_CHANNELS.STATUS_UPDATE, stateManager.getStateData());
     }
+  }
+
+  // 注册终端处理器
+  private _registerTerminalHandlers(): void {
+    ipcMain.on('terminal:write', (_event, sessionId: number, data: string) => {
+      if (this._terminalManager) {
+        this._terminalManager.writeData(sessionId, data);
+      }
+    });
+
+    ipcMain.on('terminal:resize', (_event, sessionId: number, cols: number, rows: number) => {
+      if (this._terminalManager) {
+        this._terminalManager.resizeSession(sessionId, cols, rows);
+      }
+    });
+
+    ipcMain.on('terminal:kill', (_event, sessionId: number) => {
+      if (this._terminalManager) {
+        this._terminalManager.killSession(sessionId);
+      }
+    });
+
+    ipcMain.handle('terminal:create', (_, cols: number, rows: number) => {
+      if (this._terminalManager) {
+        const win = this._windowManager?.getWindow('main');
+        if (win && !win.isDestroyed()) {
+          return this._terminalManager.createPtySession(win.id, cols, rows);
+        }
+      }
+      return null;
+    });
+  }
+
+  private _registerStatusHandlers(): void {
+    ipcMain.handle('getStatus', () => {
+      return stateManager.getStateData();
+    });
   }
 }
 

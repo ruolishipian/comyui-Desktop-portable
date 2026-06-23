@@ -216,7 +216,7 @@ describe('IPC 分支覆盖测试', () => {
 
   describe('save-env-path 处理器分支', () => {
     beforeEach(() => {
-      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager);
+      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager, null as any);
       ipcManager.registerAll();
     });
 
@@ -453,7 +453,7 @@ describe('IPC 分支覆盖测试', () => {
 
   describe('_broadcastStatus 分支', () => {
     beforeEach(() => {
-      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager);
+      ipcManager.setDependencies(mockWindowManager, mockProcessManager, mockTrayManager, null as any);
       ipcManager.registerAll();
     });
 

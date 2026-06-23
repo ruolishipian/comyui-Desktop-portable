@@ -88,27 +88,35 @@ export interface LogEntry {
   content: string;
 }
 
-// ========== IPC 通信类型 ==========
+// ========== IPC 通信类型（与 ipc-channels.ts 保持一致）==========
 export interface IpcChannels {
-  // 配置相关
-  'get-config': () => AppConfig;
-  'update-config': (key: string, value: unknown) => AppConfig;
-  'reset-config': () => boolean;
-
-  // 进程控制
-  'start-comfyui': () => void;
-  'stop-comfyui': () => void;
-  'restart-comfyui': () => void;
-
-  // 日志相关
-  'get-log-content': () => string;
-  'clear-log': () => boolean;
-
-  // 路径选择
-  'save-env-path': (paths: { comfyuiPath: string; pythonPath: string; envArgs?: string; envVars?: string }) => boolean;
-  'select-comfyui-path': () => string;
-  'select-python-path': () => string;
-  'select-directory': (title?: string) => string;
+  getConfig: () => AppConfig;
+  updateConfig: (key: string, value: unknown) => AppConfig;
+  resetConfig: () => boolean;
+  startComfyui: () => void;
+  stopComfyui: () => void;
+  restartComfyui: () => void;
+  getLogContent: () => string;
+  clearLog: () => boolean;
+  getSessionLog: () => string;
+  clearSessionLog: () => boolean;
+  saveEnvPath: (paths: { comfyuiPath: string; pythonPath: string; envArgs?: string; envVars?: string }) => boolean;
+  selectComfyuiPath: () => string;
+  selectPythonPath: () => string;
+  selectDirectory: (title?: string) => string;
+  closeWindow: () => void;
+  openSettings: () => void;
+  openLogs: () => void;
+  rendererReady: () => void;
+  clearBrowserCache: () => boolean;
+  clearStorageData: () => boolean;
+  restartApp: () => void;
+  quitApp: () => void;
+  getStatus: () => StateData;
+  terminalCreate: (cols: number, rows: number) => number | null;
+  terminalWrite: (sessionId: number, data: string) => void;
+  terminalResize: (sessionId: number, cols: number, rows: number) => void;
+  terminalKill: (sessionId: number) => void;
 }
 
 // ========== 窗口类型 ==========
@@ -133,21 +141,16 @@ export interface LogUpdateEvent {
 
 // ========== Electron API 类型 ==========
 export interface ComfyuiDesktopApi {
-  // 配置相关
   getConfig: () => Promise<AppConfig>;
   updateConfig: (key: string, value: unknown) => Promise<AppConfig>;
   resetConfig: () => Promise<boolean>;
-
-  // 进程管控
   startComfyui: () => Promise<void>;
   stopComfyui: () => Promise<void>;
   restartComfyui: () => Promise<void>;
-
-  // 日志相关
   getLogContent: () => Promise<string>;
   clearLog: () => Promise<boolean>;
-
-  // 路径选择
+  getSessionLog: () => Promise<string>;
+  clearSessionLog: () => Promise<boolean>;
   saveEnvPath: (paths: {
     comfyuiPath: string;
     pythonPath: string;
@@ -157,27 +160,26 @@ export interface ComfyuiDesktopApi {
   selectComfyuiPath: () => Promise<string>;
   selectPythonPath: () => Promise<string>;
   selectDirectory: (title?: string) => Promise<string>;
-
-  // 应用控制
   restartApp: () => void;
   quitApp: () => void;
-
-  // 窗口控制
   closeWindow: () => Promise<void>;
-
-  // 打开子窗口
   openSettings: () => Promise<void>;
   openLogs: () => Promise<void>;
-
-  // 渲染进程就绪信号
   rendererReady: () => void;
+  terminalCreate: (cols: number, rows: number) => Promise<number | null>;
+  terminalWrite: (sessionId: number, data: string) => void;
+  terminalResize: (sessionId: number, cols: number, rows: number) => void;
+  terminalKill: (sessionId: number) => void;
+  clearBrowserCache: () => Promise<boolean>;
+  clearStorageData: () => Promise<boolean>;
+  getStatus: () => Promise<StateData>;
 }
 
 export interface ElectronApi {
-  on: (channel: 'log-update' | 'status-update', callback: (event: unknown, ...args: unknown[]) => void) => () => void;
-  once: (channel: 'log-update' | 'status-update', callback: (event: unknown, ...args: unknown[]) => void) => void;
-  removeListener: (channel: 'log-update' | 'status-update', callback: (...args: unknown[]) => void) => void;
-  removeAllListeners: (channel: 'log-update' | 'status-update') => void;
+  on: (channel: 'logUpdate' | 'statusUpdate' | 'appClosing' | 'terminal:data' | 'terminal:exit', callback: (event: unknown, ...args: unknown[]) => void) => () => void;
+  once: (channel: 'logUpdate' | 'statusUpdate' | 'appClosing' | 'terminal:data' | 'terminal:exit', callback: (event: unknown, ...args: unknown[]) => void) => void;
+  removeListener: (channel: 'logUpdate' | 'statusUpdate' | 'appClosing' | 'terminal:data' | 'terminal:exit', callback: (...args: unknown[]) => void) => void;
+  removeAllListeners: (channel: 'logUpdate' | 'statusUpdate' | 'appClosing' | 'terminal:data' | 'terminal:exit') => void;
 }
 
 declare global {

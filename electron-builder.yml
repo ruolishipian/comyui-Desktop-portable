@@ -94,4 +94,7 @@ afterPack: ./scripts/filter-languages-hook.js
 afterSign: ./scripts/embed-icon-hook.js
 
 # 发布配置
-publish: null
+publish:
+  provider: github
+  owner: ruolishipian
+  repo: comyui-Desktop-portable
