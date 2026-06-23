@@ -92,14 +92,31 @@ export const electronMock: ElectronMock = {
     webContents: {
       on: jest.fn(),
       send: jest.fn(),
-      openDevTools: jest.fn()
+      openDevTools: jest.fn(),
+      setZoomFactor: jest.fn(),
+      insertCSS: jest.fn(() => Promise.resolve('')),
+      executeJavaScript: jest.fn(() => Promise.resolve()),
+      setWindowOpenHandler: jest.fn(),
+      close: jest.fn()
     },
     show: jest.fn(),
     hide: jest.fn(),
     close: jest.fn(),
     minimize: jest.fn(),
     maximize: jest.fn(),
-    restore: jest.fn()
+    restore: jest.fn(),
+    isDestroyed: jest.fn(() => false),
+    isMinimized: jest.fn(() => false),
+    isMaximized: jest.fn(() => false),
+    isVisible: jest.fn(() => true),
+    getSize: jest.fn(() => [1280, 720]),
+    getPosition: jest.fn(() => [0, 0]),
+    getContentSize: jest.fn(() => [1280, 720]),
+    getId: jest.fn(() => 1),
+    setTitle: jest.fn(),
+    setMenuBarVisibility: jest.fn(),
+    focus: jest.fn(),
+    removeAllListeners: jest.fn()
   }))
 };
 
@@ -164,6 +181,44 @@ export const mockLogger = {
 
 jest.mock('electron-log', () => mockLogger);
 jest.mock('electron-log/main', () => mockLogger);
+
+// ============================================
+// node-pty Mock
+// ============================================
+
+export const mockPty = {
+  pid: 12345,
+  process: 'python',
+  cols: 80,
+  rows: 24,
+  write: jest.fn(),
+  resize: jest.fn(),
+  kill: jest.fn(),
+  on: jest.fn(),
+  removeAllListeners: jest.fn()
+};
+
+jest.mock('node-pty', () => ({
+  spawn: jest.fn(() => mockPty)
+}));
+
+// ============================================
+// electron-updater Mock
+// ============================================
+
+export const mockAutoUpdater = {
+  autoDownload: false,
+  autoInstallOnAppQuit: true,
+  setFeedURL: jest.fn(),
+  checkForUpdates: jest.fn(() => Promise.resolve(null)),
+  downloadUpdate: jest.fn(() => Promise.resolve([])),
+  quitAndInstall: jest.fn(),
+  on: jest.fn()
+};
+
+jest.mock('electron-updater', () => ({
+  autoUpdater: mockAutoUpdater
+}));
 
 // ============================================
 // 全局测试配置

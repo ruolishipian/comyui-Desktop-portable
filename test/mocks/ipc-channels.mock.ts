@@ -1,66 +1,62 @@
 /**
  * IPC Channels Mock
- * 用于测试的 IPC 通道定义
+ * 与 src/constants/ipc-channels.ts 保持完全同步
  */
 
 export const IPC_CHANNELS = {
-  // 配置相关
   GET_CONFIG: 'getConfig',
   UPDATE_CONFIG: 'updateConfig',
   RESET_CONFIG: 'resetConfig',
-
-  // 进程控制
-  START_SERVER: 'startServer',
-  STOP_SERVER: 'stopServer',
-  RESTART_SERVER: 'restartServer',
-  GET_STATUS: 'getStatus',
-
-  // 日志相关
+  START_COMFYUI: 'startComfyui',
+  STOP_COMFYUI: 'stopComfyui',
+  RESTART_COMFYUI: 'restartComfyui',
+  GET_LOG_CONTENT: 'getLogContent',
+  CLEAR_LOG: 'clearLog',
   GET_SESSION_LOG: 'getSessionLog',
-  LOG_UPDATE: 'logUpdate',
   CLEAR_SESSION_LOG: 'clearSessionLog',
-
-  // 状态更新
-  STATUS_UPDATE: 'statusUpdate',
-  APP_CLOSING: 'appClosing',
-
-  // 窗口控制
-  OPEN_LOG_WINDOW: 'openLogWindow',
-  OPEN_CONFIG_WINDOW: 'openConfigWindow',
-  CLOSE_WINDOW: 'closeWindow',
-  MINIMIZE_WINDOW: 'minimizeWindow',
-  MAXIMIZE_WINDOW: 'maximizeWindow',
-
-  // 外部链接
-  OPEN_EXTERNAL_LINK: 'openExternalLink',
-
-  // 文件选择
-  SELECT_DIRECTORY: 'selectDirectory',
-  SELECT_FILE: 'selectFile',
+  SAVE_ENV_PATH: 'saveEnvPath',
   SELECT_COMFYUI_PATH: 'selectComfyuiPath',
   SELECT_PYTHON_PATH: 'selectPythonPath',
-
-  // 渲染进程就绪
+  SELECT_DIRECTORY: 'selectDirectory',
+  CLOSE_WINDOW: 'closeWindow',
+  OPEN_SETTINGS: 'openSettings',
+  OPEN_LOGS: 'openLogs',
   RENDERER_READY: 'rendererReady',
-
-  // 托盘相关
-  SHOW_TRAY_MENU: 'showTrayMenu',
-  UPDATE_TRAY_ICON: 'updateTrayIcon',
-
-  // 环境配置
-  CHECK_ENVIRONMENT: 'checkEnvironment',
-  CONFIGURE_ENVIRONMENT: 'configureEnvironment',
-  GET_ENVIRONMENT_STATUS: 'getEnvironmentStatus',
-
-  // 更新相关
-  CHECK_UPDATE: 'checkUpdate',
-  DOWNLOAD_UPDATE: 'downloadUpdate',
-  INSTALL_UPDATE: 'installUpdate',
-
-  // 其他
-  GET_APP_VERSION: 'getAppVersion',
-  GET_SYSTEM_INFO: 'getSystemInfo',
-  QUIT_APP: 'quitApp'
+  CLEAR_BROWSER_CACHE: 'clearBrowserCache',
+  CLEAR_STORAGE_DATA: 'clearStorageData',
+  RESTART_APP: 'restartApp',
+  QUIT_APP: 'quitApp',
+  STATUS_UPDATE: 'statusUpdate',
+  LOG_UPDATE: 'logUpdate',
+  APP_CLOSING: 'appClosing',
+  GET_STATUS: 'getStatus'
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
+
+export const INVOKE_CHANNELS = [
+  IPC_CHANNELS.GET_CONFIG,
+  IPC_CHANNELS.UPDATE_CONFIG,
+  IPC_CHANNELS.RESET_CONFIG,
+  IPC_CHANNELS.START_COMFYUI,
+  IPC_CHANNELS.STOP_COMFYUI,
+  IPC_CHANNELS.RESTART_COMFYUI,
+  IPC_CHANNELS.GET_LOG_CONTENT,
+  IPC_CHANNELS.CLEAR_LOG,
+  IPC_CHANNELS.GET_SESSION_LOG,
+  IPC_CHANNELS.CLEAR_SESSION_LOG,
+  IPC_CHANNELS.SAVE_ENV_PATH,
+  IPC_CHANNELS.SELECT_COMFYUI_PATH,
+  IPC_CHANNELS.SELECT_PYTHON_PATH,
+  IPC_CHANNELS.SELECT_DIRECTORY,
+  IPC_CHANNELS.CLOSE_WINDOW,
+  IPC_CHANNELS.OPEN_SETTINGS,
+  IPC_CHANNELS.OPEN_LOGS,
+  IPC_CHANNELS.GET_STATUS,
+  IPC_CHANNELS.CLEAR_BROWSER_CACHE,
+  IPC_CHANNELS.CLEAR_STORAGE_DATA
+] as const;
+
+export const SEND_CHANNELS = [IPC_CHANNELS.RESTART_APP, IPC_CHANNELS.QUIT_APP, IPC_CHANNELS.RENDERER_READY] as const;
+
+export const RECEIVE_CHANNELS = [IPC_CHANNELS.LOG_UPDATE, IPC_CHANNELS.STATUS_UPDATE, IPC_CHANNELS.APP_CLOSING] as const;
