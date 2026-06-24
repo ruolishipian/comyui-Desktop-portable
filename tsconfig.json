@@ -50,6 +50,6 @@
     /* Electron 特定配置 */
     "types": ["node", "jest", "electron"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "test/**/*.tsx", "test/types/**/*.d.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist", "assets", "test/e2e", ".codeartsdoer"]
 }
