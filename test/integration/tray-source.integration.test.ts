@@ -113,7 +113,7 @@ describe('TrayManager 源代码集成测试', () => {
 
   describe('依赖设置', () => {
     test('应该能设置依赖', () => {
-      trayManager.setDependencies(mockWindowManager, mockProcessManager);
+      trayManager.setDependencies(mockWindowManager, mockProcessManager, null as any);
       // 不应抛出错误
       expect(true).toBe(true);
     });

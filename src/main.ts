@@ -24,6 +24,7 @@ import {
 } from './modules';
 import { autoUpdateManager } from './modules/auto-update';
 import { httpProxyServer } from './modules/http-proxy';
+import { multiViewManager } from './modules/multi-view';
 import { terminalManager } from './modules/terminal';
 import { StateData } from './types';
 
@@ -154,7 +155,7 @@ function setupDependencies(): void {
   });
 
   // 托盘管理器 -> 依赖
-  trayManager.setDependencies(windowManager, processManager);
+  trayManager.setDependencies(windowManager, processManager, terminalManager);
 
   // IPC 管理器 -> 依赖
   ipcManager.setDependencies(windowManager, processManager, trayManager, terminalManager);
@@ -182,7 +183,20 @@ function handleStatusChange(data: StateData): void {
 
   if (status === Status.RUNNING && port) {
     httpProxyServer.updateComfyuiPort(port);
-    windowManager.loadPage('main', proxyUrl);
+    const useMultiView = configManager.advanced.useMultiView ?? false;
+    if (useMultiView) {
+      const mainWindow = windowManager.getWindow('main');
+      if (mainWindow) {
+        const entry = multiViewManager.getEntry(mainWindow.id);
+        if (entry) {
+          multiViewManager.loadComfyView(entry, proxyUrl);
+        } else {
+          windowManager.loadPage('main', proxyUrl);
+        }
+      }
+    } else {
+      windowManager.loadPage('main', proxyUrl);
+    }
   } else if (status === Status.STOPPED || status === Status.STARTING) {
     httpProxyServer.updateComfyuiPort(0);
     windowManager.loadPage('main', 'loading.html');
@@ -320,7 +334,13 @@ void app
     console.log('[Debug] isEnvironmentConfigured:', isConfigured);
 
     if (isConfigured) {
-      windowManager.createMainWindow();
+      const useMultiView = configManager.advanced.useMultiView ?? false;
+      if (useMultiView) {
+        const entry = multiViewManager.createHostWindow();
+        logger.info(`多视图模式已启用: windowId=${entry.window.id}`);
+      } else {
+        windowManager.createMainWindow();
+      }
       trayManager.create();
     } else {
       windowManager.createEnvSelectWindow();

@@ -63,6 +63,15 @@ jest.mock('../../../../src/modules/config', () => ({
   }
 }));
 
+// Mock terminal
+jest.mock('../../../../src/modules/terminal', () => ({
+  terminalManager: {
+    createTerminalWindow: jest.fn(),
+    destroy: jest.fn()
+  },
+  TerminalManager: jest.fn()
+}));
+
 import { Tray, Menu } from 'electron';
 import { stateManager } from '../../../../src/modules/state';
 
@@ -98,21 +107,21 @@ describe('托盘模块分支覆盖测试', () => {
 
   describe('create 方法分支', () => {
     test('应创建托盘实例', () => {
-      trayManager.setDependencies(mockWindowManager, mockProcessManager);
+      trayManager.setDependencies(mockWindowManager, mockProcessManager, null as any);
       trayManager.create();
 
       expect(Tray).toHaveBeenCalled();
     });
 
     test('应设置上下文菜单', () => {
-      trayManager.setDependencies(mockWindowManager, mockProcessManager);
+      trayManager.setDependencies(mockWindowManager, mockProcessManager, null as any);
       trayManager.create();
 
       expect(Menu.buildFromTemplate).toHaveBeenCalled();
     });
 
     test('应设置工具提示', () => {
-      trayManager.setDependencies(mockWindowManager, mockProcessManager);
+      trayManager.setDependencies(mockWindowManager, mockProcessManager, null as any);
       trayManager.create();
 
       expect(Tray).toHaveBeenCalled();
@@ -121,7 +130,7 @@ describe('托盘模块分支覆盖测试', () => {
 
   describe('setDependencies 方法分支', () => {
     test('应正确设置依赖', () => {
-      trayManager.setDependencies(mockWindowManager, mockProcessManager);
+      trayManager.setDependencies(mockWindowManager, mockProcessManager, null as any);
       trayManager.create();
 
       expect(Menu.buildFromTemplate).toHaveBeenCalled();
@@ -131,7 +140,7 @@ describe('托盘模块分支覆盖测试', () => {
   describe('_processManager 为 null 分支', () => {
     test('processManager 为 null 时菜单点击应不执行操作', () => {
       const noProcessTrayManager = new TrayManager();
-      noProcessTrayManager.setDependencies(mockWindowManager, undefined as any);
+      noProcessTrayManager.setDependencies(mockWindowManager, undefined as any, null as any);
       noProcessTrayManager.create();
 
       // 应该不抛出错误
@@ -186,7 +195,7 @@ describe('托盘模块分支覆盖测试', () => {
       };
 
       mockWindowManager.getWindow.mockReturnValue(mockWindow);
-      trayManager.setDependencies(mockWindowManager, mockProcessManager);
+      trayManager.setDependencies(mockWindowManager, mockProcessManager, null as any);
       trayManager.create();
 
       // 验证创建成功
@@ -202,7 +211,7 @@ describe('托盘模块分支覆盖测试', () => {
       };
 
       mockWindowManager.getWindow.mockReturnValue(mockWindow);
-      trayManager.setDependencies(mockWindowManager, mockProcessManager);
+      trayManager.setDependencies(mockWindowManager, mockProcessManager, null as any);
       trayManager.create();
 
       expect(Tray).toHaveBeenCalled();
@@ -217,7 +226,7 @@ describe('托盘模块分支覆盖测试', () => {
       };
 
       mockWindowManager.getWindow.mockReturnValue(mockWindow);
-      trayManager.setDependencies(mockWindowManager, mockProcessManager);
+      trayManager.setDependencies(mockWindowManager, mockProcessManager, null as any);
       trayManager.create();
 
       expect(Tray).toHaveBeenCalled();
@@ -225,7 +234,7 @@ describe('托盘模块分支覆盖测试', () => {
 
     test('窗口为 null 时应不执行操作', () => {
       mockWindowManager.getWindow.mockReturnValue(null);
-      trayManager.setDependencies(mockWindowManager, mockProcessManager);
+      trayManager.setDependencies(mockWindowManager, mockProcessManager, null as any);
       trayManager.create();
 
       expect(Tray).toHaveBeenCalled();
@@ -234,21 +243,21 @@ describe('托盘模块分支覆盖测试', () => {
 
   describe('菜单项点击分支', () => {
     test('点击显示窗口应调用 focusWindow', () => {
-      trayManager.setDependencies(mockWindowManager, mockProcessManager);
+      trayManager.setDependencies(mockWindowManager, mockProcessManager, null as any);
       trayManager.create();
 
       expect(Menu.buildFromTemplate).toHaveBeenCalled();
     });
 
     test('点击重置所有配置应调用 resetConfig', async () => {
-      trayManager.setDependencies(mockWindowManager, mockProcessManager);
+      trayManager.setDependencies(mockWindowManager, mockProcessManager, null as any);
       trayManager.create();
 
       expect(Menu.buildFromTemplate).toHaveBeenCalled();
     });
 
     test('点击重新选择环境应调用 createEnvSelectWindow', () => {
-      trayManager.setDependencies(mockWindowManager, mockProcessManager);
+      trayManager.setDependencies(mockWindowManager, mockProcessManager, null as any);
       trayManager.create();
 
       expect(Menu.buildFromTemplate).toHaveBeenCalled();
@@ -259,7 +268,7 @@ describe('托盘模块分支覆盖测试', () => {
     test('创建托盘后应启动定时更新', () => {
       jest.useFakeTimers();
 
-      trayManager.setDependencies(mockWindowManager, mockProcessManager);
+      trayManager.setDependencies(mockWindowManager, mockProcessManager, null as any);
       trayManager.create();
 
       // 快进时间
@@ -276,7 +285,7 @@ describe('托盘模块分支覆盖测试', () => {
     test('destroy 应清理定时器和托盘', () => {
       jest.useFakeTimers();
 
-      trayManager.setDependencies(mockWindowManager, mockProcessManager);
+      trayManager.setDependencies(mockWindowManager, mockProcessManager, null as any);
       trayManager.create();
       trayManager.destroy();
 

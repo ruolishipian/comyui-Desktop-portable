@@ -8,6 +8,8 @@
  * - 调试插件问题
  */
 
+import path from 'path';
+
 import { BrowserWindow } from 'electron';
 import { IPty, spawn } from 'node-pty';
 
@@ -58,16 +60,26 @@ export class TerminalManager {
   public createPtySession(windowId: number, cols: number, rows: number): number | null {
     try {
       const comfyuiPath = configManager.get('comfyuiPath') ?? '';
-      const pythonPath = configManager.get('pythonPath') ?? 'python';
+      const pythonPath = configManager.get('pythonPath') ?? '';
 
       const cwd = comfyuiPath || process.cwd();
 
-      const pty = spawn(pythonPath, [], {
+      const env = { ...process.env } as Record<string, string>;
+
+      if (pythonPath) {
+        const pythonDir = path.dirname(pythonPath);
+        const pathSep = process.platform === 'win32' ? ';' : ':';
+        env.PATH = `${pythonDir}${pathSep}${env.PATH ?? ''}`;
+      }
+
+      const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL ?? '/bin/bash';
+
+      const pty = spawn(shell, [], {
         name: 'xterm-256color',
         cols: cols || 80,
         rows: rows || 24,
         cwd,
-        env: { ...process.env } as Record<string, string>
+        env
       });
 
       const sessionId = pty.pid;

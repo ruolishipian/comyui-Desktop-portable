@@ -21,8 +21,8 @@ const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
 };
 
 export class Logger {
-  private _buffer: string = '';
-  private _timer: NodeJS.Timeout | null = null;
+  private _ipcBuffer: string[] = [];
+  private _ipcTimer: NodeJS.Timeout | null = null;
   private _logWindow: BrowserWindow | null = null;
   private _initialized: boolean = false;
 
@@ -30,14 +30,15 @@ export class Logger {
   private readonly _rotateCheckInterval: number = 60000;
   private _writeStream: fs.WriteStream | null = null;
   private _currentLogFile: string = '';
-  private _pendingWrite: string = '';
+  private _pendingWrite: string[] = [];
   private _writeTimer: NodeJS.Timeout | null = null;
   private readonly _writeFlushInterval: number = 500;
   private readonly _maxPendingSize: number = 64 * 1024;
   private readonly _maxIpcChunkSize: number = 32 * 1024;
+
   private _highFreqCount: number = 0;
   private _highFreqWindowStart: number = 0;
-  private readonly _highFreqThreshold: number = 200;
+  private readonly _highFreqThreshold: number = 1000;
   private readonly _highFreqWindowMs: number = 1000;
   private _isHighFreqMode: boolean = false;
 
@@ -46,9 +47,7 @@ export class Logger {
   private readonly _comfyUIRotateCheckInterval: number = 60000;
   private readonly _comfyUILogMaxSize: number = 50 * 1024 * 1024;
   private _comfyUIWriteStream: fs.WriteStream | null = null;
-  private _comfyUIPendingWrite: string = '';
-  private _comfyUIWriteTimer: NodeJS.Timeout | null = null;
-  private readonly _comfyUIWriteFlushInterval: number = 500;
+  private _comfyUIPendingWrite: string[] = [];
 
   private _sessionLogCache: string[] = [];
   private _sessionLogSize: number = 0;
@@ -194,10 +193,6 @@ export class Logger {
     return path.join(configManager.logsDir, `comfyui-${date}.log`);
   }
 
-  /**
-   * 统一日志写入入口
-   * 级别判断已由 log-parser 完成，此处仅做级别过滤和格式化
-   */
   public log(content: string, level: LogLevel = 'info'): void {
     if (!this._initialized) return;
 
@@ -223,46 +218,23 @@ export class Logger {
       this._isHighFreqMode = true;
     }
 
-    if (this._isHighFreqMode && level === 'info') {
-      const skipRate = Math.min(Math.floor(this._highFreqCount / this._highFreqThreshold), 10);
-      if (skipRate > 1 && this._highFreqCount % skipRate !== 0) {
-        this._appendPendingWrite(`[${new Date().toLocaleTimeString()}] [${level}] ${content}\n`);
-        this._appendComfyUIPendingWrite(`[${new Date().toLocaleTimeString()}] ${content}\n`);
-        return;
-      }
-    }
-
     const timestamp = new Date().toLocaleTimeString();
     const logLine = `[${timestamp}] [${level}] ${content}\n`;
+    const comfyUILine = `[${timestamp}] ${content}\n`;
 
-    if (this._sessionLogSize + logLine.length < this._maxSessionLogSize) {
-      this._sessionLogCache.push(logLine);
-      this._sessionLogSize += logLine.length;
-    } else {
-      const keepCount = Math.floor(this._sessionLogCache.length * 0.8);
-      this._sessionLogCache = this._sessionLogCache.slice(-keepCount);
-      this._sessionLogSize = this._sessionLogCache.reduce((sum, line) => sum + line.length, 0);
-      this._sessionLogCache.push(logLine);
-      this._sessionLogSize += logLine.length;
+    this._appendSessionLog(logLine);
+
+    const skipIpc = this._isHighFreqMode && level === 'info' && this._highFreqCount % 3 !== 0;
+
+    if (!skipIpc) {
+      this._ipcBuffer.push(logLine);
+      this._scheduleIpcFlush();
     }
 
-    const maxIpcBuffer = 256 * 1024;
-    if (this._buffer.length < maxIpcBuffer) {
-      this._buffer += logLine;
-    } else {
-      const halfLen = Math.floor(this._buffer.length / 2);
-      const cutIdx = this._buffer.indexOf('\n', halfLen);
-      if (cutIdx > 0) {
-        this._buffer = this._buffer.substring(cutIdx + 1) + logLine;
-      } else {
-        this._buffer = logLine;
-      }
-    }
-    this._scheduleFlush();
+    this._pendingWrite.push(logLine);
+    this._scheduleWriteFlush();
 
-    this._appendPendingWrite(logLine);
-
-    this._appendComfyUIPendingWrite(`[${timestamp}] ${content}\n`);
+    this._comfyUIPendingWrite.push(comfyUILine);
 
     if (!app.isPackaged) {
       console.log(logLine.trim());
@@ -281,37 +253,49 @@ export class Logger {
     this.log(content, 'info');
   }
 
-  private _scheduleFlush(): void {
-    if (this._timer) return;
-
-    const throttle = this._isHighFreqMode
-      ? Math.min((configManager.advanced.stdoutThrottle ?? 100) * 3, 500)
-      : (configManager.advanced.stdoutThrottle ?? 100);
-    this._timer = setTimeout(() => {
-      this._flushBuffer();
-      this._timer = null;
-    }, throttle);
+  private _appendSessionLog(logLine: string): void {
+    if (this._sessionLogSize + logLine.length < this._maxSessionLogSize) {
+      this._sessionLogCache.push(logLine);
+      this._sessionLogSize += logLine.length;
+    } else {
+      const keepCount = Math.floor(this._sessionLogCache.length * 0.8);
+      this._sessionLogCache = this._sessionLogCache.slice(-keepCount);
+      this._sessionLogSize = this._sessionLogCache.reduce((sum, line) => sum + line.length, 0);
+      this._sessionLogCache.push(logLine);
+      this._sessionLogSize += logLine.length;
+    }
   }
 
-  private _flushBuffer(): void {
-    if (!this._buffer) return;
+  private _scheduleIpcFlush(): void {
+    if (this._ipcTimer) return;
 
-    if (this._logWindow && !this._logWindow.isDestroyed() && this._logWindow.isVisible()) {
-      const logConfig = configManager.logs;
-      if (logConfig.realtime) {
-        if (this._logWindow.isMinimized()) {
-          this._buffer = '';
-          return;
-        }
-        if (this._buffer.length <= this._maxIpcChunkSize) {
-          this._logWindow.webContents.send(IPC_CHANNELS.LOG_UPDATE, this._buffer);
-        } else {
-          void this._sendBufferChunks(this._buffer);
-        }
-      }
+    const interval = this._isHighFreqMode ? 50 : 16;
+    this._ipcTimer = setTimeout(() => {
+      this._flushIpcBuffer();
+      this._ipcTimer = null;
+    }, interval);
+  }
+
+  private _flushIpcBuffer(): void {
+    if (this._ipcBuffer.length === 0) return;
+
+    const text = this._ipcBuffer.join('');
+    this._ipcBuffer = [];
+
+    if (!this._logWindow || this._logWindow.isDestroyed() || !this._logWindow.isVisible()) {
+      return;
     }
 
-    this._buffer = '';
+    const logConfig = configManager.logs;
+    if (!logConfig.realtime) return;
+
+    if (this._logWindow.isMinimized()) return;
+
+    if (text.length <= this._maxIpcChunkSize) {
+      this._logWindow.webContents.send(IPC_CHANNELS.LOG_UPDATE, text);
+    } else {
+      void this._sendBufferChunks(text);
+    }
   }
 
   private async _sendBufferChunks(buffer: string): Promise<void> {
@@ -334,32 +318,35 @@ export class Logger {
       offset = end;
     }
 
-    const delay = this._isHighFreqMode ? 50 : 16;
     for (const chunk of chunks) {
       if (this._logWindow && !this._logWindow.isDestroyed()) {
         this._logWindow.webContents.send(IPC_CHANNELS.LOG_UPDATE, chunk);
       }
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise(resolve => setTimeout(resolve, 16));
     }
   }
 
-  private _appendPendingWrite(logLine: string): void {
-    this._pendingWrite += logLine;
-    if (this._pendingWrite.length >= this._maxPendingSize) {
+  private _scheduleWriteFlush(): void {
+    if (this._writeTimer) return;
+
+    const pendingSize = this._pendingWrite.reduce((sum, s) => sum + s.length, 0)
+      + this._comfyUIPendingWrite.reduce((sum, s) => sum + s.length, 0);
+
+    if (pendingSize >= this._maxPendingSize) {
       this._flushPendingWrite();
-    } else if (!this._writeTimer) {
-      this._writeTimer = setTimeout(() => {
-        this._flushPendingWrite();
-      }, this._writeFlushInterval);
+      this._flushComfyUIPendingWrite();
+      return;
     }
+
+    this._writeTimer = setTimeout(() => {
+      this._flushPendingWrite();
+      this._flushComfyUIPendingWrite();
+      this._writeTimer = null;
+    }, this._writeFlushInterval);
   }
 
   private _flushPendingWrite(): void {
-    if (this._writeTimer) {
-      clearTimeout(this._writeTimer);
-      this._writeTimer = null;
-    }
-    if (!this._pendingWrite || !this._writeStream) return;
+    if (this._pendingWrite.length === 0 || !this._writeStream) return;
 
     const now = Date.now();
     if (now - this._lastRotateCheck > this._rotateCheckInterval) {
@@ -367,8 +354,21 @@ export class Logger {
       void this._rotateLogFile();
     }
 
-    this._writeStream.write(this._pendingWrite);
-    this._pendingWrite = '';
+    this._writeStream.write(this._pendingWrite.join(''));
+    this._pendingWrite = [];
+  }
+
+  private _flushComfyUIPendingWrite(): void {
+    if (this._comfyUIPendingWrite.length === 0 || !this._comfyUIWriteStream) return;
+
+    const now = Date.now();
+    if (now - this._lastComfyUIRotateCheck > this._comfyUIRotateCheckInterval) {
+      this._lastComfyUIRotateCheck = now;
+      void this._rotateComfyUILogFile();
+    }
+
+    this._comfyUIWriteStream.write(this._comfyUIPendingWrite.join(''));
+    this._comfyUIPendingWrite = [];
   }
 
   private async _rotateLogFile(): Promise<void> {
@@ -457,34 +457,6 @@ export class Logger {
   }
 
   // ========== ComfyUI 独立日志 ==========
-
-  private _appendComfyUIPendingWrite(line: string): void {
-    this._comfyUIPendingWrite += line;
-    if (this._comfyUIPendingWrite.length >= this._maxPendingSize) {
-      this._flushComfyUIPendingWrite();
-    } else if (!this._comfyUIWriteTimer) {
-      this._comfyUIWriteTimer = setTimeout(() => {
-        this._flushComfyUIPendingWrite();
-      }, this._comfyUIWriteFlushInterval);
-    }
-  }
-
-  private _flushComfyUIPendingWrite(): void {
-    if (this._comfyUIWriteTimer) {
-      clearTimeout(this._comfyUIWriteTimer);
-      this._comfyUIWriteTimer = null;
-    }
-    if (!this._comfyUIPendingWrite || !this._comfyUIWriteStream) return;
-
-    const now = Date.now();
-    if (now - this._lastComfyUIRotateCheck > this._comfyUIRotateCheckInterval) {
-      this._lastComfyUIRotateCheck = now;
-      void this._rotateComfyUILogFile();
-    }
-
-    this._comfyUIWriteStream.write(this._comfyUIPendingWrite);
-    this._comfyUIPendingWrite = '';
-  }
 
   private async _rotateComfyUILogFile(): Promise<void> {
     if (!this._comfyUILogFile) return;

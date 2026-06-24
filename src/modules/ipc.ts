@@ -430,9 +430,9 @@ export class IPCManager {
       }
     });
 
-    ipcMain.handle('terminal:create', (_, cols: number, rows: number) => {
+    ipcMain.handle('terminal:create', (event, cols: number, rows: number) => {
       if (this._terminalManager) {
-        const win = this._windowManager?.getWindow('main');
+        const win = BrowserWindow.fromWebContents(event.sender);
         if (win && !win.isDestroyed()) {
           return this._terminalManager.createPtySession(win.id, cols, rows);
         }

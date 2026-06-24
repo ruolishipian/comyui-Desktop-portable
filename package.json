@@ -4,6 +4,7 @@
   "description": "ComfyUI 便携桌面版 - TypeScript 模块化架构",
   "main": "dist/src/main.js",
   "scripts": {
+    "postinstall": "node scripts/patch-node-pty.js",
     "build": "tsc && npm run copy-assets",
     "build:watch": "tsc --watch",
     "copy-assets": "node -e \"const fs=require('fs');const path=require('path');const src='assets';const dest='dist/assets';if(!fs.existsSync(dest))fs.mkdirSync(dest,{recursive:true});fs.readdirSync(src).forEach(f=>{const s=path.join(src,f);const d=path.join(dest,f);if(fs.statSync(s).isDirectory()){fs.cpSync(s,d,{recursive:true})}else{fs.copyFileSync(s,d)}})\"",

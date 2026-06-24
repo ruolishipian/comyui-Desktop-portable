@@ -5,7 +5,7 @@ appId: com.comfyui.portable-desktop
 productName: ComfyUI-Desktop-portable
 copyright: Copyright © 2024 ComfyUI Community
 
-npmRebuild: false
+npmRebuild: true
 
 # 目录配置
 directories:

@@ -57,6 +57,22 @@ export const IPC_CHANNELS = {
   OPEN_SETTINGS: 'openSettings',
   /** 打开日志 */
   OPEN_LOGS: 'openLogs',
+  /** 打开终端 */
+  OPEN_TERMINAL: 'openTerminal',
+
+  // ========== 终端控制 ==========
+  /** 创建终端会话 */
+  TERMINAL_CREATE: 'terminal:create',
+  /** 终端写入数据 */
+  TERMINAL_WRITE: 'terminal:write',
+  /** 终端调整大小 */
+  TERMINAL_RESIZE: 'terminal:resize',
+  /** 终端终止会话 */
+  TERMINAL_KILL: 'terminal:kill',
+  /** 终端数据输出 */
+  TERMINAL_DATA: 'terminal:data',
+  /** 终端会话退出 */
+  TERMINAL_EXIT: 'terminal:exit',
 
   // ========== 渲染进程信号 ==========
   /** 渲染进程就绪 */
@@ -112,6 +128,8 @@ export const INVOKE_CHANNELS = [
   IPC_CHANNELS.CLOSE_WINDOW,
   IPC_CHANNELS.OPEN_SETTINGS,
   IPC_CHANNELS.OPEN_LOGS,
+  IPC_CHANNELS.OPEN_TERMINAL,
+  IPC_CHANNELS.TERMINAL_CREATE,
   IPC_CHANNELS.GET_STATUS,
   IPC_CHANNELS.CLEAR_BROWSER_CACHE,
   IPC_CHANNELS.CLEAR_STORAGE_DATA
@@ -120,7 +138,14 @@ export const INVOKE_CHANNELS = [
 /**
  * Send 通道列表（用于 preload 白名单）
  */
-export const SEND_CHANNELS = [IPC_CHANNELS.RESTART_APP, IPC_CHANNELS.QUIT_APP, IPC_CHANNELS.RENDERER_READY] as const;
+export const SEND_CHANNELS = [
+  IPC_CHANNELS.RESTART_APP,
+  IPC_CHANNELS.QUIT_APP,
+  IPC_CHANNELS.RENDERER_READY,
+  IPC_CHANNELS.TERMINAL_WRITE,
+  IPC_CHANNELS.TERMINAL_RESIZE,
+  IPC_CHANNELS.TERMINAL_KILL
+] as const;
 
 /**
  * Receive 通道列表（用于 preload 白名单）
@@ -128,7 +153,9 @@ export const SEND_CHANNELS = [IPC_CHANNELS.RESTART_APP, IPC_CHANNELS.QUIT_APP, I
 export const RECEIVE_CHANNELS = [
   IPC_CHANNELS.LOG_UPDATE,
   IPC_CHANNELS.STATUS_UPDATE,
-  IPC_CHANNELS.APP_CLOSING
+  IPC_CHANNELS.APP_CLOSING,
+  IPC_CHANNELS.TERMINAL_DATA,
+  IPC_CHANNELS.TERMINAL_EXIT
 ] as const;
 
 /**

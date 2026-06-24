@@ -356,6 +356,12 @@
             <input type="checkbox" id="singleInstance" />
           </div>
           <div class="tips">禁止同时运行多个ComfyUI实例</div>
+
+          <div class="form-item">
+            <label>多视图模式（实验性）：</label>
+            <input type="checkbox" id="useMultiView" />
+          </div>
+          <div class="tips">使用WebContentsView组合标题栏和侧边面板，需重启应用生效</div>
         </div>
 
         <div class="form-group">
@@ -466,6 +472,7 @@
 
         // 高级设置（默认启用单实例）
         document.getElementById('singleInstance').checked = config.advanced?.singleInstance !== false;
+        document.getElementById('useMultiView').checked = config.advanced?.useMultiView === true;
       }
 
       // 保存设置
@@ -497,6 +504,7 @@
           },
           advanced: {
             singleInstance: document.getElementById('singleInstance').checked,
+            useMultiView: document.getElementById('useMultiView').checked,
             stdoutThrottle: document.getElementById('stdoutThrottle').value ? parseInt(document.getElementById('stdoutThrottle').value) : undefined
           }
         };

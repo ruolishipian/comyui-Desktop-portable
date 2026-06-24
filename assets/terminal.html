@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ComfyUI 终端</title>
-    <link rel="stylesheet" href="/shell/assets/xterm.css" />
+    <link rel="stylesheet" href="/shell/assets/xterm/xterm.css" />
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
@@ -49,8 +49,8 @@
     <div class="terminal-container" id="terminal"></div>
 
     <script type="module">
-      import { Terminal } from '/shell/assets/xterm.mjs';
-      import { FitAddon } from '/shell/assets/xterm-addon-fit.mjs';
+      import { Terminal } from '/shell/assets/xterm/xterm.mjs';
+      import { FitAddon } from '/shell/assets/xterm/xterm-addon-fit.mjs';
 
       const container = document.getElementById('terminal');
       const term = new Terminal({
@@ -101,16 +101,20 @@
       });
 
       document.getElementById('btn-new').addEventListener('click', () => {
-        if (window.comfyuiDesktop && window.comfyuiDesktop.createTerminalSession) {
-          currentSessionId = window.comfyuiDesktop.createTerminalSession(term.cols, term.rows);
-          term.clear();
-          term.focus();
+        if (window.comfyuiDesktop && window.comfyuiDesktop.terminalCreate) {
+          window.comfyuiDesktop.terminalCreate(term.cols, term.rows).then((sessionId) => {
+            if (sessionId !== null) {
+              currentSessionId = sessionId;
+              term.clear();
+              term.focus();
+            }
+          });
         }
       });
 
       document.getElementById('btn-kill').addEventListener('click', () => {
         if (currentSessionId !== null && window.comfyuiDesktop) {
-          window.comfyuiDesktop.killTerminalSession(currentSessionId);
+          window.comfyuiDesktop.terminalKill(currentSessionId);
           currentSessionId = null;
           term.write('\r\n\x1b[33m[终端已终止]\x1b[0m\r\n');
         }

@@ -84,6 +84,18 @@ jest.mock('../../../../src/modules/windows', () => ({
   }
 }));
 
+// Mock terminal
+jest.mock('../../../../src/modules/terminal', () => ({
+  terminalManager: {
+    createTerminalWindow: jest.fn(),
+    destroy: jest.fn()
+  },
+  TerminalManager: class TerminalManager {
+    createTerminalWindow = jest.fn();
+    destroy = jest.fn();
+  }
+}));
+
 // 设置全局变量
 (global as { isQuiting?: boolean }).isQuiting = false;
 
@@ -103,7 +115,7 @@ describe('TrayManager 源代码测试', () => {
       const windowManager = new WindowManager();
       const processManager = new ProcessManager();
 
-      trayManager.setDependencies(windowManager, processManager);
+      trayManager.setDependencies(windowManager, processManager, null as any);
 
       expect(true).toBe(true);
     });
@@ -129,7 +141,7 @@ describe('TrayManager 源代码测试', () => {
 
       const windowManager = new WindowManager();
       const processManager = new ProcessManager();
-      trayManager.setDependencies(windowManager, processManager);
+      trayManager.setDependencies(windowManager, processManager, null as any);
       trayManager.create();
 
       const clickHandler = mockTray.on.mock.calls.find((call: unknown[]) => call[0] === 'click')?.[1];

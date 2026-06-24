@@ -12,6 +12,7 @@ import { createFileOperationMenuItems } from './menu-utils';
 import { PATHS } from './paths';
 import { ProcessManager } from './process';
 import { stateManager } from './state';
+import { TerminalManager } from './terminal';
 import { WindowManager } from './windows';
 
 // 托盘管理器
@@ -20,11 +21,16 @@ export class TrayManager {
 
   private _windowManager: WindowManager | null = null;
   private _processManager: ProcessManager | null = null;
+  private _terminalManager: TerminalManager | null = null;
 
-  // 设置依赖
-  public setDependencies(windowManager: WindowManager, processManager: ProcessManager): void {
+  public setDependencies(
+    windowManager: WindowManager,
+    processManager: ProcessManager,
+    terminalManager: TerminalManager
+  ): void {
     this._windowManager = windowManager;
     this._processManager = processManager;
+    this._terminalManager = terminalManager;
   }
 
   // 创建托盘
@@ -111,6 +117,14 @@ export class TrayManager {
         click: () => {
           if (this._windowManager) {
             this._windowManager.createLogWindow();
+          }
+        }
+      },
+      {
+        label: '打开终端',
+        click: () => {
+          if (this._terminalManager) {
+            this._terminalManager.createTerminalWindow();
           }
         }
       },

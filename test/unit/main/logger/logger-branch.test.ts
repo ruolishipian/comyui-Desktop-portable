@@ -155,7 +155,7 @@ describe('日志模块分支覆盖测试', () => {
     test('缓冲区未满时应累积日志', () => {
       logger.info('message 1');
       logger.info('message 2');
-      const buffer = (logger as any)._buffer;
+      const buffer = (logger as any)._ipcBuffer;
       expect(buffer.length).toBeGreaterThan(0);
     });
 

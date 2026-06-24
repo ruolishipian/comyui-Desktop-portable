@@ -15,6 +15,7 @@ import { httpProxyServer } from './http-proxy';
 import { createFileOperationMenuItems } from './menu-utils';
 import { PATHS } from './paths';
 import { stateManager } from './state';
+import { terminalManager } from './terminal';
 
 // 获取应用图标
 function getAppIcon(): NativeImage | undefined {
@@ -418,6 +419,13 @@ export class WindowManager {
       {
         label: '查看实时日志',
         click: () => this.createLogWindow()
+      },
+      {
+        label: '打开终端',
+        click: () => {
+
+          terminalManager.createTerminalWindow();
+        }
       },
       {
         label: '设置',

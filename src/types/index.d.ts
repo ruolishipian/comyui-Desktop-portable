@@ -57,6 +57,7 @@ export interface TrayConfig {
 export interface AdvancedConfig {
   singleInstance?: boolean;
   stdoutThrottle?: number;
+  useMultiView?: boolean;
 }
 
 export interface AppConfig {
