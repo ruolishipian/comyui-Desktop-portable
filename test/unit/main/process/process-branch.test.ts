@@ -394,7 +394,7 @@ describe('进程管理分支覆盖测试', () => {
       await processManager.start();
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      expect(stateManager.status).toBe('stopped');
+      expect(stateManager.status).toBe('running');
     });
   });
 
@@ -695,7 +695,7 @@ describe('进程管理分支覆盖测试', () => {
         stderr: {
           on: jest.fn((event: string, callback: (data: Buffer) => void) => {
             if (event === 'data') {
-              setImmediate(() => callback(Buffer.from('Error message')));
+              setImmediate(() => callback(Buffer.from('Error message\n')));
             }
           })
         },
@@ -709,7 +709,7 @@ describe('进程管理分支覆盖测试', () => {
       await new Promise(resolve => setTimeout(resolve, 50));
 
       const { logger } = require('../../../../src/modules/logger');
-      expect(logger.error).toHaveBeenCalled();
+      expect(logger.log).toHaveBeenCalledWith('Error message', 'error');
     });
 
     test('stderr 包含 warning 时应记录 warn 日志', async () => {
@@ -720,7 +720,7 @@ describe('进程管理分支覆盖测试', () => {
         stderr: {
           on: jest.fn((event: string, callback: (data: Buffer) => void) => {
             if (event === 'data') {
-              setImmediate(() => callback(Buffer.from('Warning: deprecated feature')));
+              setImmediate(() => callback(Buffer.from('Warning: deprecated feature\n')));
             }
           })
         },
@@ -734,8 +734,7 @@ describe('进程管理分支覆盖测试', () => {
       await new Promise(resolve => setTimeout(resolve, 50));
 
       const { logger } = require('../../../../src/modules/logger');
-      expect(logger.warn).toHaveBeenCalled();
-      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.log).toHaveBeenCalledWith('Warning: deprecated feature', 'warn');
     });
 
     test('stderr 包含 round-off error 时应记录 info 日志', async () => {

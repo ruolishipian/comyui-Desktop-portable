@@ -1,4 +1,4 @@
-/**
+﻿/**
  * IPC 异常场景测试
  * 补充 IPCManager 的异常场景测试用例
  */
@@ -35,6 +35,8 @@ jest.mock('../../../../src/modules/config', () => ({
     get: jest.fn((key: string) => {
       if (key === 'comfyuiPath') return '/test/comfyui';
       if (key === 'pythonPath') return '/test/python';
+      if (key === 'envArgs') return '';
+      if (key === 'envVars') return '';
       return '';
     }),
     set: jest.fn(),
@@ -131,34 +133,34 @@ describe('IPC 异常场景测试', () => {
       ipcManager.registerAll();
     });
 
-    test('key 为空字符串时仍应执行设置', async () => {
+    test('key 为空字符串时应被白名单拒绝', async () => {
       const updateHandler = ipcMain.handle.mock.calls.find((call: unknown[]) => call[0] === 'updateConfig')?.[1];
 
       if (updateHandler) {
         await updateHandler({}, '', 'test-value');
       }
 
-      expect(configManager.set).toHaveBeenCalledWith('', 'test-value');
+      expect(configManager.set).not.toHaveBeenCalledWith('', 'test-value');
     });
 
     test('value 为 null 时应正常处理', async () => {
       const updateHandler = ipcMain.handle.mock.calls.find((call: unknown[]) => call[0] === 'updateConfig')?.[1];
 
       if (updateHandler) {
-        await updateHandler({}, 'test.key', null);
+        await updateHandler({}, 'server.port', null);
       }
 
-      expect(configManager.set).toHaveBeenCalledWith('test.key', null);
+      expect(configManager.set).toHaveBeenCalledWith('server.port', null);
     });
 
     test('value 为 undefined 时应正常处理', async () => {
       const updateHandler = ipcMain.handle.mock.calls.find((call: unknown[]) => call[0] === 'updateConfig')?.[1];
 
       if (updateHandler) {
-        await updateHandler({}, 'test.key', undefined);
+        await updateHandler({}, 'server.port', undefined);
       }
 
-      expect(configManager.set).toHaveBeenCalledWith('test.key', undefined);
+      expect(configManager.set).toHaveBeenCalledWith('server.port', undefined);
     });
 
     test('value 为复杂对象时应正常处理', async () => {
@@ -173,10 +175,10 @@ describe('IPC 异常场景测试', () => {
       const updateHandler = ipcMain.handle.mock.calls.find((call: unknown[]) => call[0] === 'updateConfig')?.[1];
 
       if (updateHandler) {
-        await updateHandler({}, 'complex.key', complexValue);
+        await updateHandler({}, 'server', complexValue);
       }
 
-      expect(configManager.set).toHaveBeenCalledWith('complex.key', complexValue);
+      expect(configManager.set).toHaveBeenCalledWith('server', complexValue);
     });
   });
 
@@ -226,7 +228,6 @@ describe('IPC 异常场景测试', () => {
         await saveEnvHandler({}, {});
       }
 
-      // 应该不抛出错误
       expect(true).toBe(true);
     });
   });
@@ -403,7 +404,6 @@ describe('IPC 异常场景测试', () => {
 
       if (closeHandler) {
         const mockEvent = { sender: {} };
-        // 由于 close 可能抛出异常，测试应该捕获
         try {
           await closeHandler(mockEvent);
         } catch (error) {
@@ -423,9 +423,9 @@ describe('IPC 异常场景测试', () => {
 
       if (updateHandler) {
         const promises = [
-          updateHandler({}, 'key1', 'value1'),
-          updateHandler({}, 'key2', 'value2'),
-          updateHandler({}, 'key3', 'value3')
+          updateHandler({}, 'server.port', 8188),
+          updateHandler({}, 'server.autoStart', true),
+          updateHandler({}, 'server.cpuMode', false)
         ];
 
         await Promise.all(promises);

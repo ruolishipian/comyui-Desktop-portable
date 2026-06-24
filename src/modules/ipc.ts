@@ -58,8 +58,8 @@ const UPDATE_CONFIG_ALLOWED_KEYS: ReadonlySet<string> = new Set([
   'window.maximized'
 ]);
 
-function isValidFilePath(filePath: string): boolean {
-  if (filePath === '') return true;
+function isValidFilePath(filePath: string | undefined): boolean {
+  if (filePath === '' || filePath === undefined) return true;
   try {
     const normalized = path.normalize(filePath);
     return normalized.length <= 4096 && !normalized.includes('\0');

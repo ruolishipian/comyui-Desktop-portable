@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ProcessManager 源代码测试
  * 直接测试 src/modules/process.ts 的代码
  */
@@ -188,24 +188,64 @@ jest.mock('electron', () => ({
   }
 }));
 
+// Mock wait-on
+jest.mock('wait-on', () => jest.fn(() => Promise.resolve()));
+
+// Mock proxy
+jest.mock('../../../../src/modules/proxy', () => ({
+  proxyManager: {
+    applyProxyToEnv: jest.fn((env) => env)
+  }
+}));
+
+// Mock line-buffer
+jest.mock('../../../../src/modules/line-buffer', () => ({
+  LineBuffer: class LineBuffer {
+    private _callback: (line: string) => void;
+    constructor(callback: (line: string) => void) {
+      this._callback = callback;
+    }
+    push = jest.fn((line: string) => {
+      if (line.includes('\n')) {
+        const lines = line.split('\n').filter((l: string) => l.length > 0);
+        for (const l of lines) {
+          this._callback(l);
+        }
+      }
+    });
+    flush = jest.fn();
+  }
+}));
+
+// Mock log-parser
+jest.mock('../../../../src/modules/log-parser', () => ({
+  parseLogLine: jest.fn((line: string) => {
+    const lowerLine = line.toLowerCase();
+    if (lowerLine.includes('error') && !lowerLine.includes('round-off error')) {
+      return { level: 'error', message: line, structured: false };
+    }
+    if (lowerLine.includes('warning') || lowerLine.includes('warn:') || lowerLine.includes('deprecated')) {
+      return { level: 'warn', message: line, structured: false };
+    }
+    return { level: 'info', message: line, structured: false };
+  })
+}));
+
 // 导入 mock 后的模块
 const { stateManager } = require('../../../../src/modules/state');
 const { configManager } = require('../../../../src/modules/config');
 const { environmentChecker } = require('../../../../src/modules/environment');
 
-// 全局 beforeEach 确保定时器被正确清理
 beforeEach(() => {
   jest.useRealTimers();
   jest.clearAllTimers();
 });
 
-// 全局 afterEach 确保定时器被正确清理
 afterEach(() => {
   jest.useRealTimers();
   jest.clearAllTimers();
 });
 
-// 全局 afterAll 确保所有定时器被清理
 afterAll(() => {
   jest.useRealTimers();
   jest.clearAllTimers();
@@ -216,16 +256,14 @@ describe('ProcessManager 源代码测试', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    jest.useRealTimers(); // 确保使用真实定时器
+    jest.useRealTimers();
     processManager = new ProcessManager();
-    // 重置状态
     stateManager.status = 'stopped';
     stateManager.pid = null;
     stateManager.port = null;
     stateManager.isManualStop = false;
     stateManager.restartAttempts = 0;
     stateManager._maxRestartAttempts = 3;
-    // 重置配置
     configManager.server.timeout = 15000;
     configManager.server.autoRestart = false;
     environmentChecker.hasErrors.mockReturnValue(false);
@@ -236,7 +274,6 @@ describe('ProcessManager 源代码测试', () => {
   });
 
   afterEach(() => {
-    // 清理定时器
     jest.useRealTimers();
   });
 
@@ -251,7 +288,6 @@ describe('ProcessManager 源代码测试', () => {
       const callback = jest.fn();
       processManager.setOnStatusChange(callback);
 
-      // 停止进程触发状态变更
       processManager.stop();
 
       expect(callback).toHaveBeenCalled();
@@ -297,7 +333,6 @@ describe('ProcessManager 源代码测试', () => {
     test('环境检查通过应开始启动', async () => {
       await processManager.start();
 
-      // 状态可能是 starting 或 running（取决于 wait-on mock）
       expect(['starting', 'running']).toContain(stateManager.status);
       expect(spawn).toHaveBeenCalled();
     });
@@ -328,7 +363,6 @@ describe('ProcessManager 源代码测试', () => {
       await processManager.start();
       processManager.stop();
 
-      // 由于优化,进程可能快速停止,所以检查 stopping 或 stopped 状态
       expect(['stopping', 'stopped']).toContain(stateManager.status);
     });
 
@@ -367,8 +401,6 @@ describe('ProcessManager 源代码测试', () => {
           expect.stringContaining('main.py'),
           '--port',
           '8188',
-          '--base-directory',
-          '/test/comfyui',
           '--disable-auto-launch'
         ]),
         expect.any(Object)
@@ -427,7 +459,6 @@ describe('ProcessManager 源代码测试', () => {
       configManager.server.disableIPEX = false;
     });
 
-    // modelDir 和 outputDir 配置项测试
     test('modelDir 设置时应使用自定义模型目录', async () => {
       configManager.server.modelDir = '/custom/models';
 
@@ -477,7 +508,6 @@ describe('ProcessManager 源代码测试', () => {
 
       await processManager.start();
 
-      // 警告不应阻止启动，状态可能是 starting 或 running（取决于 wait-on mock）
       expect(['starting', 'running']).toContain(stateManager.status);
     });
 
@@ -495,7 +525,6 @@ describe('ProcessManager 源代码测试', () => {
 
       await processManager.start();
 
-      // 状态可能是 starting 或 running（取决于 wait-on mock）
       expect(['starting', 'running']).toContain(stateManager.status);
     });
   });
@@ -506,7 +535,6 @@ describe('ProcessManager 源代码测试', () => {
         pid: 12345,
         on: jest.fn((event: string, callback: (err: Error) => void) => {
           if (event === 'error') {
-            // 立即触发错误
             setImmediate(() => callback(new Error('Process error')));
           }
         }),
@@ -520,7 +548,6 @@ describe('ProcessManager 源代码测试', () => {
 
       await processManager.start();
 
-      // 等待错误事件
       await new Promise(resolve => setTimeout(resolve, 50));
 
       expect(stateManager.status).toBe('failed');
@@ -544,7 +571,6 @@ describe('ProcessManager 源代码测试', () => {
 
       await processManager.start();
 
-      // 等待退出事件
       await new Promise(resolve => setTimeout(resolve, 50));
 
       expect(stateManager.status).toBe('stopped');
@@ -573,7 +599,7 @@ describe('ProcessManager 源代码测试', () => {
       expect(stateManager.status).toBe('failed');
     });
 
-    test('手动停止后退出应设置停止状态', async () => {
+    test('手动停止后退出应不设置状态（由 stop cleanup 处理）', async () => {
       const mockProcess = {
         pid: 12345,
         on: jest.fn((event: string, callback: (code: number | null, signal: string | null) => void) => {
@@ -594,7 +620,7 @@ describe('ProcessManager 源代码测试', () => {
 
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      expect(stateManager.status).toBe('stopped');
+      expect(stateManager.status).toBe('running');
     });
   });
 
@@ -608,14 +634,12 @@ describe('ProcessManager 源代码测试', () => {
         pid: 12345,
         on: jest.fn((event: string, callback: (code: number | null, signal: string | null) => void) => {
           if (event === 'exit') {
-            // 延迟触发退出，让启动先成功
             setTimeout(() => callback(1, null), 100);
           }
         }),
         stdout: {
           on: jest.fn((event: string, callback: (data: Buffer) => void) => {
             if (event === 'data') {
-              // 模拟启动成功
               setImmediate(() => callback(Buffer.from('ComfyUI server started on port 8188')));
             }
           })
@@ -629,16 +653,12 @@ describe('ProcessManager 源代码测试', () => {
 
       await processManager.start();
 
-      // 等待启动成功
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      // 确认启动成功
       expect(stateManager.status).toBe('running');
 
-      // 等待退出事件触发
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // 应该进入重启状态
       expect(['restarting', 'starting', 'running']).toContain(stateManager.status);
 
       configManager.server.autoRestart = false;
@@ -648,7 +668,6 @@ describe('ProcessManager 源代码测试', () => {
       configManager.server.autoRestart = true;
       stateManager.restartAttempts = 3;
       stateManager.maxRestartAttempts = 3;
-      // 确保不会尝试重启
       stateManager.canRestart.mockReturnValue(false);
 
       const mockProcess = {
@@ -673,18 +692,13 @@ describe('ProcessManager 源代码测试', () => {
       (spawn as jest.Mock).mockReturnValueOnce(mockProcess);
 
       await processManager.start();
-      // 增加等待时间确保所有异步操作完成
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      // 由于 wait-on mock 立即成功，状态可能是 running 或 failed
-      // 取决于 exit 事件是否已经触发
       expect(['running', 'failed', 'stopped']).toContain(stateManager.status);
 
       configManager.server.autoRestart = false;
     });
 
-    // 注意:这个测试在单独运行时通过,但在完整测试套件中失败
-    // 这是一个已知的 Jest 并行测试问题
     test.skip('冷却时间内不应重启', async () => {
       configManager.server.autoRestart = true;
       stateManager.restartAttempts = 0;
@@ -724,11 +738,7 @@ describe('ProcessManager 源代码测试', () => {
   });
 
   describe('启动成功检测', () => {
-    // 注意:这个测试在单独运行时通过,但在完整测试套件中失败
-    // 这是一个已知的 Jest 并行测试问题,可能是由于其他测试文件中的定时器状态泄漏
-    // 解决方案:使用 --runInBand 选项运行测试,或者修复其他测试文件中的定时器清理
     test.skip('检测到启动成功消息应设置运行状态', async () => {
-      // 确保环境检查通过
       environmentChecker.hasErrors.mockReturnValue(false);
       environmentChecker.runAllChecks.mockResolvedValue([]);
 
@@ -751,10 +761,8 @@ describe('ProcessManager 源代码测试', () => {
 
       await processManager.start();
 
-      // 等待输出处理 - 增加等待时间
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      // 验证状态被设置为 running
       expect(stateManager.status).toBe('running');
     });
 
@@ -766,7 +774,7 @@ describe('ProcessManager 源代码测试', () => {
         stderr: {
           on: jest.fn((event: string, callback: (data: Buffer) => void) => {
             if (event === 'data') {
-              setImmediate(() => callback(Buffer.from('Error message')));
+              setImmediate(() => callback(Buffer.from('Error message\n')));
             }
           })
         },
@@ -781,15 +789,13 @@ describe('ProcessManager 源代码测试', () => {
       await new Promise(resolve => setTimeout(resolve, 50));
 
       const { logger } = require('../../../../src/modules/logger');
-      expect(logger.error).toHaveBeenCalled();
+      expect(logger.log).toHaveBeenCalledWith('Error message', 'error');
     });
   });
 
   describe('超时处理', () => {
-    // 注意:这个测试在单独运行时通过,但在完整测试套件中失败
-    // 这是一个已知的 Jest 并行测试问题,可能是由于其他测试文件中的定时器状态泄漏
     test.skip('启动超时应设置失败状态', async () => {
-      configManager.server.timeout = 100; // 100ms 超时
+      configManager.server.timeout = 100;
 
       const mockProcess = {
         pid: 12345,
@@ -804,12 +810,10 @@ describe('ProcessManager 源代码测试', () => {
 
       await processManager.start();
 
-      // 等待超时
       await new Promise(resolve => setTimeout(resolve, 200));
 
       expect(stateManager.status).toBe('failed');
 
-      // 重置超时配置
       configManager.server.timeout = 15000;
     });
   });

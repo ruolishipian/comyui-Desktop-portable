@@ -287,10 +287,10 @@ export class ConfigManager {
         }
 
         // 使用共享函数查找 Python 路径
-        const pythonPath = findPythonPath(appPath);
-        if (pythonPath) {
-          this.set('pythonPath', pythonPath);
-          console.log(`[Config] 自动检测到 Python: ${pythonPath}`);
+        const detectedPythonPath = findPythonPath(appPath);
+        if (detectedPythonPath) {
+          this.set('pythonPath', detectedPythonPath);
+          console.log(`[Config] 自动检测到 Python: ${detectedPythonPath}`);
         }
       }
 

@@ -22,7 +22,18 @@ jest.mock('../../../../src/modules/config', () => ({
   }
 }));
 
-// Mock fs
+const mockWriteStream = {
+  on: jest.fn(),
+  write: jest.fn(() => true),
+  end: jest.fn()
+};
+
+const mockComfyUIWriteStream = {
+  on: jest.fn(),
+  write: jest.fn(() => true),
+  end: jest.fn()
+};
+
 jest.mock('fs', () => ({
   existsSync: jest.fn(() => true),
   mkdirSync: jest.fn(),
@@ -30,6 +41,16 @@ jest.mock('fs', () => ({
   statSync: jest.fn(() => ({ size: 1000 })),
   readdirSync: jest.fn(() => []),
   unlinkSync: jest.fn(),
+  createWriteStream: jest.fn((_path, _opts) => {
+    if (_path && String(_path).includes('comfyui-output')) {
+      return mockComfyUIWriteStream;
+    }
+    return mockWriteStream;
+  }),
+  createReadStream: jest.fn(() => ({
+    on: jest.fn(),
+    pipe: jest.fn()
+  })),
   promises: {
     appendFile: jest.fn(() => Promise.resolve()),
     stat: jest.fn(() => Promise.resolve({ size: 1000, ctimeMs: Date.now() })),
@@ -37,7 +58,9 @@ jest.mock('fs', () => ({
     readFile: jest.fn(() => Promise.resolve('')),
     writeFile: jest.fn(() => Promise.resolve()),
     rename: jest.fn(() => Promise.resolve()),
-    unlink: jest.fn(() => Promise.resolve())
+    unlink: jest.fn(() => Promise.resolve()),
+    mkdir: jest.fn(() => Promise.resolve()),
+    access: jest.fn(() => Promise.resolve())
   }
 }));
 
@@ -167,28 +190,28 @@ describe('Logger 源代码测试', () => {
     });
 
     test('应该能设置有效的日志窗口', () => {
-      logger.setLogWindow(mockLogWindow as unknown as Electron.BrowserWindow);
+      logger.setLogWindow(mockLogWindow as any);
       logger.info('test with window');
       expect(true).toBe(true);
     });
 
     test('窗口销毁时不应发送', () => {
       mockLogWindow.isDestroyed.mockReturnValue(true);
-      logger.setLogWindow(mockLogWindow as unknown as Electron.BrowserWindow);
+      logger.setLogWindow(mockLogWindow as any);
       logger.info('test with destroyed window');
       expect(true).toBe(true);
     });
 
     test('窗口不可见时不应发送', () => {
       mockLogWindow.isVisible.mockReturnValue(false);
-      logger.setLogWindow(mockLogWindow as unknown as Electron.BrowserWindow);
+      logger.setLogWindow(mockLogWindow as any);
       logger.info('test with invisible window');
       expect(true).toBe(true);
     });
 
     test('禁用实时日志时不应发送', () => {
       mockConfigManager.logs.realtime = false;
-      logger.setLogWindow(mockLogWindow as unknown as Electron.BrowserWindow);
+      logger.setLogWindow(mockLogWindow as any);
       logger.info('test with realtime disabled');
       expect(true).toBe(true);
     });

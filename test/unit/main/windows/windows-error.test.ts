@@ -36,7 +36,8 @@ jest.mock('electron', () => ({
     removeListener: jest.fn(),
     webContents: {
       send: jest.fn(),
-      on: jest.fn()
+      on: jest.fn(),
+      setWindowOpenHandler: jest.fn()
     }
   })),
   dialog: {

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tray 源代码测试
  * 直接测试 src/modules/tray.ts 的代码
  */
@@ -48,7 +48,8 @@ jest.mock('../../../../src/modules/logger', () => ({
 // Mock stateManager
 jest.mock('../../../../src/modules/state', () => ({
   stateManager: {
-    status: 'stopped'
+    status: 'stopped',
+    addListener: jest.fn(() => jest.fn())
   }
 }));
 
@@ -119,7 +120,6 @@ describe('TrayManager 源代码测试', () => {
       trayManager.create();
       trayManager.create();
 
-      // 只创建一次
       expect(true).toBe(true);
     });
 
@@ -132,7 +132,6 @@ describe('TrayManager 源代码测试', () => {
       trayManager.setDependencies(windowManager, processManager);
       trayManager.create();
 
-      // 触发点击事件
       const clickHandler = mockTray.on.mock.calls.find((call: unknown[]) => call[0] === 'click')?.[1];
 
       if (clickHandler) {

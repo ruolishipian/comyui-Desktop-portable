@@ -1,4 +1,4 @@
-import { parseLogLine } from '../../../../src/modules/log-parser';
+﻿import { parseLogLine } from '../../../../src/modules/log-parser';
 
 describe('log-parser', () => {
   test('应该解析 JSON 格式日志', () => {
@@ -16,6 +16,9 @@ describe('log-parser', () => {
 
   test('应该处理空行', () => {
     const result = parseLogLine('');
-    expect(result).toBeNull();
+    expect(result).toBeDefined();
+    expect(result?.level).toBe('info');
+    expect(result?.message).toBe('');
+    expect(result?.structured).toBe(false);
   });
 });

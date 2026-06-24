@@ -1,4 +1,4 @@
-/**
+﻿/**
  * IPC 分支覆盖测试
  * 补充 IPCManager 的分支覆盖测试用例
  */
@@ -35,6 +35,8 @@ jest.mock('../../../../src/modules/config', () => ({
     get: jest.fn((key: string) => {
       if (key === 'comfyuiPath') return '/test/comfyui';
       if (key === 'pythonPath') return '/test/python';
+      if (key === 'envArgs') return '';
+      if (key === 'envVars') return '';
       return '';
     }),
     set: jest.fn(),
@@ -92,7 +94,6 @@ jest.mock('../../../../src/modules/windows', () => ({
     focusWindow = jest.fn();
     resetConfig = jest.fn(() => Promise.resolve());
 
-    // 测试辅助方法
     _setWindow(type: string, win: { close: jest.Mock; isDestroyed: jest.Mock }): void {
       this._windows.set(type, win);
     }
@@ -121,7 +122,6 @@ describe('IPC 分支覆盖测试', () => {
     jest.clearAllMocks();
     ipcManager = new IPCManager();
 
-    // 创建 Mock 依赖
     const { WindowManager } = require('../../../../src/modules/windows');
     const { ProcessManager } = require('../../../../src/modules/process');
     const { TrayManager } = require('../../../../src/modules/tray');
@@ -135,16 +135,12 @@ describe('IPC 分支覆盖测试', () => {
     test('processManager 为 null 时 start-comfyui 应不执行任何操作', async () => {
       ipcManager.registerAll();
 
-      // 获取 start-comfyui 处理器
       const startHandler = ipcMain.handle.mock.calls.find((call: unknown[]) => call[0] === 'startComfyui')?.[1];
 
-      // 不设置 processManager 依赖
-      // 直接调用处理器
       if (startHandler) {
         await startHandler({});
       }
 
-      // 应该不抛出错误
       expect(true).toBe(true);
     });
 
@@ -189,7 +185,6 @@ describe('IPC 分支覆盖测试', () => {
         );
       }
 
-      // 应该不抛出错误
       expect(true).toBe(true);
     });
 
@@ -226,7 +221,6 @@ describe('IPC 分支覆盖测试', () => {
         isDestroyed: jest.fn(() => false)
       };
 
-      // 设置 envSelect 窗口
       (mockWindowManager as any)._setWindow('envSelect', mockWindow);
 
       const saveEnvHandler = ipcMain.handle.mock.calls.find((call: unknown[]) => call[0] === 'saveEnvPath')?.[1];
@@ -291,16 +285,10 @@ describe('IPC 分支覆盖测试', () => {
           {
             comfyuiPath: '/test/comfyui',
             pythonPath: '/test/python'
-            // 不传 envArgs 和 envVars
           }
         );
       }
 
-      // 验证配置被设置（如果功能实现）
-      // expect(configManager.set).toHaveBeenCalledWith('envArgs', '');
-      // expect(configManager.set).toHaveBeenCalledWith('envVars', '');
-
-      // 基本验证：处理器存在
       expect(saveEnvHandler).toBeDefined();
     });
   });
@@ -354,7 +342,6 @@ describe('IPC 分支覆盖测试', () => {
       if (closeHandler) {
         const mockEvent = { sender: {} };
         const result = await closeHandler(mockEvent);
-        // 应该返回 undefined
         expect(result).toBeUndefined();
       }
     });
@@ -461,10 +448,9 @@ describe('IPC 分支覆盖测试', () => {
       const updateHandler = ipcMain.handle.mock.calls.find((call: unknown[]) => call[0] === 'updateConfig')?.[1];
 
       if (updateHandler) {
-        await updateHandler({}, 'test.key', 'test.value');
+        await updateHandler({}, 'server.port', 8188);
       }
 
-      // 等待 setImmediate 执行
       await new Promise(resolve => setImmediate(resolve));
 
       expect(mockWindowManager.broadcast).toHaveBeenCalledWith('statusUpdate', expect.any(Object));

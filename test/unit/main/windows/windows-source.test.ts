@@ -30,7 +30,8 @@ const mockWindow = {
   webContents: {
     send: jest.fn(),
     on: jest.fn(),
-    openDevTools: jest.fn()
+    openDevTools: jest.fn(),
+    setWindowOpenHandler: jest.fn()
   }
 };
 
@@ -186,11 +187,12 @@ describe('WindowManager 源代码测试', () => {
   });
 
   describe('页面加载', () => {
-    test('loadPage 应加载本地文件', () => {
+    test('loadPage 应通过代理加载本地文件', () => {
       windowManager.createMainWindow();
       windowManager.loadPage('main', 'test.html');
 
-      expect(mockWindow.loadFile).toHaveBeenCalled();
+      expect(mockWindow.loadURL).toHaveBeenCalled();
+      expect(mockWindow.loadFile).not.toHaveBeenCalled();
     });
 
     test('loadPage 应加载 URL', () => {

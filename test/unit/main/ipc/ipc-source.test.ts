@@ -1,4 +1,4 @@
-/**
+﻿/**
  * IPC 源代码测试
  * 直接测试 src/modules/ipc.ts 的代码
  */
@@ -175,8 +175,8 @@ describe('IPC 源代码测试', () => {
       const handler = ipcMain.handle.mock.calls.find((call: unknown[]) => call[0] === 'updateConfig')?.[1];
 
       if (handler) {
-        await handler({}, 'test.key', 'test.value');
-        expect(configManager.set).toHaveBeenCalledWith('test.key', 'test.value');
+        await handler({}, 'server.port', 8188);
+        expect(configManager.set).toHaveBeenCalledWith('server.port', 8188);
       }
     });
 

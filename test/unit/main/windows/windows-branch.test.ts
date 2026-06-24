@@ -35,7 +35,8 @@ jest.mock('electron', () => ({
     setTitle: jest.fn(),
     webContents: {
       send: jest.fn(),
-      on: jest.fn()
+      on: jest.fn(),
+      setWindowOpenHandler: jest.fn()
     }
   })),
   dialog: {
@@ -333,7 +334,7 @@ describe('窗口管理分支覆盖测试', () => {
       expect(mockWindow.loadURL).toHaveBeenCalledWith('https://example.com');
     });
 
-    test('本地文件应调用 loadFile', () => {
+    test('本地文件应调用 loadURL 通过代理', () => {
       const mockWindow = {
         isDestroyed: jest.fn(() => false),
         loadURL: jest.fn(),
@@ -344,7 +345,8 @@ describe('窗口管理分支覆盖测试', () => {
 
       windowManager.loadPage('main', 'index.html');
 
-      expect(mockWindow.loadFile).toHaveBeenCalled();
+      expect(mockWindow.loadURL).toHaveBeenCalled();
+      expect(mockWindow.loadFile).not.toHaveBeenCalled();
     });
 
     test('窗口已销毁时应不执行操作', () => {
@@ -358,7 +360,7 @@ describe('窗口管理分支覆盖测试', () => {
 
       windowManager.loadPage('main', 'index.html');
 
-      expect(mockWindow.loadFile).not.toHaveBeenCalled();
+      expect(mockWindow.loadURL).not.toHaveBeenCalled();
     });
 
     test('窗口不存在时应不执行操作', () => {

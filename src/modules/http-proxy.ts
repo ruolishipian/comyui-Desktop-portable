@@ -255,6 +255,9 @@ export class HttpProxyServer {
     proxyHeaders.origin = `http://${targetHost}:${targetPort}`;
     proxyHeaders.referer = `http://${targetHost}:${targetPort}/`;
     delete proxyHeaders['accept-encoding'];
+    delete proxyHeaders['sec-fetch-site'];
+    delete proxyHeaders['sec-fetch-mode'];
+    delete proxyHeaders['sec-fetch-dest'];
 
     const proxyReq = http.request(
       {
@@ -332,7 +335,7 @@ export class HttpProxyServer {
 
     for (const [key, value] of Object.entries(req.headers)) {
       const lowerKey = key.toLowerCase();
-      if (lowerKey === 'host' || lowerKey === 'connection' || lowerKey === 'upgrade') {
+      if (lowerKey === 'host' || lowerKey === 'connection' || lowerKey === 'upgrade' || lowerKey === 'origin') {
         continue;
       }
       if (Array.isArray(value)) {

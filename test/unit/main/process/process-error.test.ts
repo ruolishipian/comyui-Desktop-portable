@@ -462,9 +462,9 @@ describe('进程管理异常场景测试', () => {
       expect(stateManager.resetRestartAttempts).toHaveBeenCalled();
     });
 
-    test('重启应设置手动停止为 false', () => {
+    test('重启应设置 restarting 状态', () => {
       processManager.restart();
-      expect(stateManager.setManualStop).toHaveBeenCalledWith(false);
+      expect(stateManager.status).toBe('restarting');
     });
   });
 
