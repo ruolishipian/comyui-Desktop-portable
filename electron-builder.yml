@@ -5,7 +5,6 @@ appId: com.comfyui.portable-desktop
 productName: ComfyUI-Desktop-portable
 copyright: Copyright © 2024 ComfyUI Community
 
-# 跳过原生模块重编译（node-pty 需要本地 Python 环境）
 npmRebuild: false
 
 # 目录配置
