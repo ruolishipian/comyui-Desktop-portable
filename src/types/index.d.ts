@@ -57,7 +57,7 @@ export interface TrayConfig {
 export interface AdvancedConfig {
   singleInstance?: boolean;
   stdoutThrottle?: number;
-  useMultiView?: boolean;
+
 }
 
 export interface AppConfig {
@@ -101,6 +101,7 @@ export interface IpcChannels {
   clearLog: () => boolean;
   getSessionLog: () => string;
   clearSessionLog: () => boolean;
+  getLogPage: (endLine: number, limit: number) => { lines: string[]; totalLines: number; startLine: number };
   saveEnvPath: (paths: { comfyuiPath: string; pythonPath: string; envArgs?: string; envVars?: string }) => boolean;
   selectComfyuiPath: () => string;
   selectPythonPath: () => string;

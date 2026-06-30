@@ -421,6 +421,39 @@ export class Logger {
     }
   }
 
+  public async readLogPage(
+    endLine: number,
+    limit: number
+  ): Promise<{ lines: string[]; totalLines: number; startLine: number }> {
+    const logFile = this.getTodayLogFile();
+    try {
+      const stats = await fs.promises.stat(logFile);
+      if (stats.size === 0) return { lines: [], totalLines: 0, startLine: 0 };
+
+      const readSize = Math.min(stats.size, 512 * 1024);
+      const readOffset = Math.max(0, stats.size - readSize);
+      const buffer = Buffer.alloc(readSize);
+      const handle = await fs.promises.open(logFile, 'r');
+      await handle.read(buffer, 0, readSize, readOffset);
+      await handle.close();
+
+      const content = buffer.toString('utf8');
+      const allLines = content.split('\n').filter((l) => l.trim());
+      const totalLines = allLines.length;
+
+      if (endLine <= 0) {
+        const start = Math.max(0, totalLines - limit);
+        return { lines: allLines.slice(start), totalLines, startLine: start };
+      }
+
+      const end = Math.min(endLine, totalLines);
+      const start = Math.max(0, end - limit);
+      return { lines: allLines.slice(start, end), totalLines, startLine: start };
+    } catch {
+      return { lines: [], totalLines: 0, startLine: 0 };
+    }
+  }
+
   public async readLogContent(): Promise<string> {
     const logFile = this.getTodayLogFile();
     try {

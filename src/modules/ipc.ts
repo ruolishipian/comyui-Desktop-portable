@@ -236,6 +236,10 @@ export class IPCManager {
       logger.clearSessionLog();
       return true;
     });
+
+    typedHandle(IPC_CHANNELS.GET_LOG_PAGE, async (_, endLine: number, limit: number) => {
+      return await logger.readLogPage(endLine, limit);
+    });
   }
 
   // 注册路径选择处理器

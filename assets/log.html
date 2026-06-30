@@ -112,6 +112,27 @@
       .auto-scroll input {
         accent-color: #6366f1;
       }
+      .load-more-bar {
+        text-align: center;
+        padding: 8px;
+        color: #9ca3af;
+        font-size: 11px;
+        cursor: pointer;
+        background: #1a1a2e;
+        border-radius: 4px;
+        margin-bottom: 4px;
+      }
+      .load-more-bar:hover {
+        background: #1e1e3a;
+        color: #c4b5fd;
+      }
+      .load-more-bar.loading {
+        cursor: wait;
+        opacity: 0.6;
+      }
+      .load-more-bar.hidden {
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -125,7 +146,9 @@
         自动滚动
       </label>
     </div>
-    <div class="log-container" id="log-content"></div>
+    <div class="log-container" id="log-content">
+      <div class="load-more-bar hidden" id="load-more" onclick="loadMoreHistory()">↑ 向上加载更早的日志（点击或滚动到顶部自动加载）</div>
+    </div>
     <div class="status-bar">
       <div class="status-item">
         <div class="status-dot" id="status-dot"></div>
@@ -150,10 +173,12 @@
       const pidText = document.getElementById('pid-text');
       const updateTime = document.getElementById('update-time');
       const autoScrollCheckbox = document.getElementById('autoScroll');
+      const loadMoreBar = document.getElementById('load-more');
 
-      const MAX_LINES = 2000;
+      const MAX_LINES = 5000;
       const TRIM_LINES = 500;
       const RENDER_SKIP_FRAMES = 2;
+      const HISTORY_PAGE_SIZE = 500;
       let pendingText = '';
       let rafId = null;
       let isPageVisible = !document.hidden;
@@ -161,12 +186,21 @@
       let frameCount = 0;
       let userScrolledUp = false;
 
+      let historyEndLine = 0;
+      let totalFileLines = 0;
+      let isLoadingHistory = false;
+      let hasMoreHistory = false;
+
       const LEVEL_TEXT = { error: '错误', warn: '警告', info: '信息' };
       const LEVEL_CLASS = { error: 'e', warn: 'w', info: 'i' };
 
       logContent.addEventListener('scroll', () => {
         const { scrollTop, scrollHeight, clientHeight } = logContent;
         userScrolledUp = scrollTop + clientHeight < scrollHeight - 50;
+
+        if (scrollTop < 60 && hasMoreHistory && !isLoadingHistory) {
+          loadMoreHistory();
+        }
       });
 
       function formatLineToHtml(line) {
@@ -200,17 +234,75 @@
         if (count > 0) {
           logContent.appendChild(fragment);
           lineCount += count;
-          trimOldLines();
+          trimOldLinesFromBottom();
         }
       }
 
-      function trimOldLines() {
+      function prependLines(lines) {
+        if (!lines || lines.length === 0) return;
+        const fragment = document.createDocumentFragment();
+        let count = 0;
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const div = document.createElement('div');
+          div.className = 'log-line';
+          div.innerHTML = formatLineToHtml(line);
+          fragment.appendChild(div);
+          count++;
+        }
+        if (count > 0) {
+          const prevScrollHeight = logContent.scrollHeight;
+          const refNode = loadMoreBar.nextSibling;
+          if (refNode) {
+            logContent.insertBefore(fragment, refNode);
+          } else {
+            logContent.appendChild(fragment);
+          }
+          lineCount += count;
+          const newScrollHeight = logContent.scrollHeight;
+          logContent.scrollTop += (newScrollHeight - prevScrollHeight);
+        }
+      }
+
+      function trimOldLinesFromBottom() {
         if (lineCount <= MAX_LINES) return;
         const removeCount = lineCount - MAX_LINES + TRIM_LINES;
-        for (let i = 0; i < removeCount && logContent.firstChild; i++) {
-          logContent.removeChild(logContent.firstChild);
+        const children = logContent.children;
+        for (let i = children.length - 1; i >= 0 && removeCount > 0; i--) {
+          if (children[i] === loadMoreBar) continue;
+          children[i].remove();
+          lineCount--;
         }
-        lineCount = Math.max(0, lineCount - removeCount);
+      }
+
+      async function loadMoreHistory() {
+        if (isLoadingHistory || !hasMoreHistory) return;
+        isLoadingHistory = true;
+        loadMoreBar.classList.add('loading');
+        loadMoreBar.textContent = '加载中...';
+
+        try {
+          const result = await window.comfyuiDesktop.getLogPage(historyEndLine, HISTORY_PAGE_SIZE);
+          if (result && result.lines && result.lines.length > 0) {
+            prependLines(result.lines);
+            historyEndLine = result.startLine;
+            if (historyEndLine <= 0) {
+              hasMoreHistory = false;
+              loadMoreBar.classList.add('hidden');
+            } else {
+              loadMoreBar.textContent = '↑ 向上加载更早的日志（剩余约 ' + historyEndLine + ' 行）';
+            }
+          } else {
+            hasMoreHistory = false;
+            loadMoreBar.classList.add('hidden');
+          }
+        } catch {
+          hasMoreHistory = false;
+          loadMoreBar.classList.add('hidden');
+        }
+
+        isLoadingHistory = false;
+        loadMoreBar.classList.remove('loading');
       }
 
       function scheduleRender() {
@@ -278,12 +370,25 @@
               if (start > 0) {
                 const div = document.createElement('div');
                 div.className = 'log-line';
-                div.innerHTML = '<span class="i">... 跳过前 ' + start + ' 行 ...</span>';
+                div.innerHTML = '<span class="i">... 跳过前 ' + start + ' 行（滚动到顶部可加载历史日志） ...</span>';
                 logContent.appendChild(div);
               }
               const display = lines.slice(start).join('\n');
               appendIncremental(display);
               logContent.scrollTop = logContent.scrollHeight;
+
+              if (window.comfyuiDesktop.getLogPage) {
+                const result = await window.comfyuiDesktop.getLogPage(0, 0);
+                if (result) {
+                  totalFileLines = result.totalLines || 0;
+                  historyEndLine = totalFileLines - lines.length;
+                  if (historyEndLine > 0) {
+                    hasMoreHistory = true;
+                    loadMoreBar.classList.remove('hidden');
+                    loadMoreBar.textContent = '↑ 向上加载更早的日志（剩余约 ' + historyEndLine + ' 行）';
+                  }
+                }
+              }
             } else {
               appendPlaceholder();
             }
@@ -314,10 +419,27 @@
       async function refreshLog() {
         try {
           const content = await window.comfyuiDesktop.getLogContent();
-          logContent.innerHTML = '';
+          logContent.querySelectorAll('.log-line').forEach(el => el.remove());
           lineCount = 0;
+          historyEndLine = 0;
+          hasMoreHistory = false;
+          loadMoreBar.classList.add('hidden');
           appendIncremental(content);
           updateTime.textContent = new Date().toLocaleTimeString();
+
+          if (window.comfyuiDesktop.getLogPage) {
+            const result = await window.comfyuiDesktop.getLogPage(0, 0);
+            if (result) {
+              totalFileLines = result.totalLines || 0;
+              const displayedLines = content.split('\n').filter(l => l.trim()).length;
+              historyEndLine = totalFileLines - displayedLines;
+              if (historyEndLine > 0) {
+                hasMoreHistory = true;
+                loadMoreBar.classList.remove('hidden');
+                loadMoreBar.textContent = '↑ 向上加载更早的日志（剩余约 ' + historyEndLine + ' 行）';
+              }
+            }
+          }
         } catch (err) {
           logContent.textContent = '加载日志失败：' + err.message;
         }
@@ -326,9 +448,12 @@
       async function clearLog() {
         const result = await window.comfyuiDesktop.clearLog();
         if (result) {
-          logContent.innerHTML = '';
+          logContent.querySelectorAll('.log-line').forEach(el => el.remove());
           lineCount = 0;
           pendingText = '';
+          historyEndLine = 0;
+          hasMoreHistory = false;
+          loadMoreBar.classList.add('hidden');
           const div = document.createElement('div');
           div.className = 'log-line';
           div.innerHTML = '<span class="i">日志已清空</span>';

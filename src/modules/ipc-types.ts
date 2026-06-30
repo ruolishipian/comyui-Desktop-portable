@@ -25,6 +25,10 @@ export interface IpcChannels {
   [IPC_CHANNELS.CLEAR_LOG]: { params: []; return: boolean };
   [IPC_CHANNELS.GET_SESSION_LOG]: { params: []; return: string };
   [IPC_CHANNELS.CLEAR_SESSION_LOG]: { params: []; return: boolean };
+  [IPC_CHANNELS.GET_LOG_PAGE]: {
+    params: [endLine: number, limit: number];
+    return: { lines: string[]; totalLines: number; startLine: number };
+  };
 
   // 路径选择
   [IPC_CHANNELS.SAVE_ENV_PATH]: {

@@ -23,6 +23,7 @@ const IPC_CHANNELS = {
   CLEAR_LOG: 'clearLog',
   GET_SESSION_LOG: 'getSessionLog',
   CLEAR_SESSION_LOG: 'clearSessionLog',
+  GET_LOG_PAGE: 'getLogPage',
   // 路径选择
   SAVE_ENV_PATH: 'saveEnvPath',
   SELECT_COMFYUI_PATH: 'selectComfyuiPath',
@@ -82,6 +83,15 @@ contextBridge.exposeInMainWorld('comfyuiDesktop', {
   clearLog: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CLEAR_LOG) as Promise<boolean>,
   getSessionLog: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_LOG) as Promise<string>,
   clearSessionLog: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CLEAR_SESSION_LOG) as Promise<boolean>,
+  getLogPage: (
+    endLine: number,
+    limit: number
+  ): Promise<{ lines: string[]; totalLines: number; startLine: number }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_LOG_PAGE, endLine, limit) as Promise<{
+      lines: string[];
+      totalLines: number;
+      startLine: number;
+    }>,
 
   // 路径选择
   saveEnvPath: (paths: {

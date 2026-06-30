@@ -39,6 +39,8 @@ export const IPC_CHANNELS = {
   GET_SESSION_LOG: 'getSessionLog',
   /** 清空会话日志 */
   CLEAR_SESSION_LOG: 'clearSessionLog',
+  /** 分页读取历史日志 */
+  GET_LOG_PAGE: 'getLogPage',
 
   // ========== 路径选择 ==========
   /** 保存环境路径 */
@@ -121,6 +123,7 @@ export const INVOKE_CHANNELS = [
   IPC_CHANNELS.CLEAR_LOG,
   IPC_CHANNELS.GET_SESSION_LOG,
   IPC_CHANNELS.CLEAR_SESSION_LOG,
+  IPC_CHANNELS.GET_LOG_PAGE,
   IPC_CHANNELS.SAVE_ENV_PATH,
   IPC_CHANNELS.SELECT_COMFYUI_PATH,
   IPC_CHANNELS.SELECT_PYTHON_PATH,
