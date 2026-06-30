@@ -24,13 +24,14 @@ import {
 } from './modules';
 import { autoUpdateManager } from './modules/auto-update';
 import { httpProxyServer } from './modules/http-proxy';
-import { multiViewManager } from './modules/multi-view';
+
 import { terminalManager } from './modules/terminal';
 import { StateData } from './types';
 
 // ========== Chrome 环境模拟配置 ==========
 // 所有资源通过内部 HTTP 代理服务提供，同源策略正常启用
 app.commandLine.appendSwitch('disable-electron-zoom-controls');
+
 
 // 设置 App User Model ID（解决 Windows 任务栏图标问题）
 // 这对于 Windows 任务栏正确显示图标非常重要
@@ -183,20 +184,7 @@ function handleStatusChange(data: StateData): void {
 
   if (status === Status.RUNNING && port) {
     httpProxyServer.updateComfyuiPort(port);
-    const useMultiView = configManager.advanced.useMultiView ?? false;
-    if (useMultiView) {
-      const mainWindow = windowManager.getWindow('main');
-      if (mainWindow) {
-        const entry = multiViewManager.getEntry(mainWindow.id);
-        if (entry) {
-          multiViewManager.loadComfyView(entry, proxyUrl);
-        } else {
-          windowManager.loadPage('main', proxyUrl);
-        }
-      }
-    } else {
-      windowManager.loadPage('main', proxyUrl);
-    }
+    windowManager.loadPage('main', proxyUrl);
   } else if (status === Status.STOPPED || status === Status.STARTING) {
     httpProxyServer.updateComfyuiPort(0);
     windowManager.loadPage('main', 'loading.html');
@@ -334,13 +322,7 @@ void app
     console.log('[Debug] isEnvironmentConfigured:', isConfigured);
 
     if (isConfigured) {
-      const useMultiView = configManager.advanced.useMultiView ?? false;
-      if (useMultiView) {
-        const entry = multiViewManager.createHostWindow();
-        logger.info(`多视图模式已启用: windowId=${entry.window.id}`);
-      } else {
-        windowManager.createMainWindow();
-      }
+      windowManager.createMainWindow();
       trayManager.create();
     } else {
       windowManager.createEnvSelectWindow();
@@ -378,42 +360,25 @@ app.on('before-quit', event => {
     // 1. 通知前端应用即将关闭
     windowManager.broadcast(IPC_CHANNELS.APP_CLOSING, null);
 
-    // 2. 停止进程
-    processManager.stop();
-
-    // 3. 等待进程退出（最多等待 3 秒，从 5 秒优化）
-    const maxWait = 3000;
-    const startTime = Date.now();
-
-    const checkAndExit = (): void => {
-      const status = stateManager.status;
-      const elapsed = Date.now() - startTime;
-
-      if (status === 'stopped' || status === 'failed' || elapsed >= maxWait) {
-        if (elapsed >= maxWait) {
-          logger.warn('等待进程退出超时，强制退出');
-          // 超时后强制杀死进程
-          processManager.forceKill();
-        } else {
-          logger.info(`进程已退出，耗时 ${elapsed}ms`);
-        }
-
-        // 4. 关闭所有窗口并退出
-        logger.info('ComfyUI 便携桌面版退出');
-        trayManager.destroy();
-        httpProxyServer.stop();
-        autoUpdateManager.destroy();
-        terminalManager.destroy();
-        windowManager.closeAll();
-        app.exit(0);
-      } else {
-        // 继续等待（缩短检查间隔，从 100ms 优化到 50ms）
-        setTimeout(checkAndExit, 50);
+    // 2. 停止进程（等待进程真正退出）
+    void (async () => {
+      try {
+        await processManager.stop();
+        logger.info('进程已退出');
+      } catch (err) {
+        logger.warn('停止进程失败，强制退出');
+        processManager.forceKill();
       }
-    };
 
-    // 开始检查
-    setTimeout(checkAndExit, 50);
+      // 3. 关闭所有窗口并退出
+      logger.info('ComfyUI 便携桌面版退出');
+      trayManager.destroy();
+      httpProxyServer.stop();
+      autoUpdateManager.destroy();
+      terminalManager.destroy();
+      windowManager.closeAll();
+      app.exit(0);
+    })();
   } else {
     global.isQuiting = true;
     logger.info('ComfyUI 便携桌面版开始退出');

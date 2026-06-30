@@ -39,6 +39,8 @@ export class ProcessManager {
   private readonly _maxConsecutiveFailures: number = 5; // 连续失败5次才标记为失败（从3次优化）
   private _healthCheckStartTime: number = 0; // 健康检查开始时间
   private readonly _healthCheckGracePeriod: number = 180000; // 启动后180秒内的宽容期（插件多时启动慢）
+  private _processAliveConsecutiveBusy: number = 0; // 进程存活但繁忙的连续次数
+  private readonly _maxProcessAliveBusy: number = 10; // 进程存活但繁忙的最大容忍次数
 
   // 启动检测配置
   public static readonly MAX_FAIL_WAIT = 30 * 60 * 1000; // 30分钟最大等待时间
@@ -398,9 +400,7 @@ comfyui_portable:
     // 检查是否已有进程在运行
     if (this._process && !this._process.killed) {
       logger.warn('ComfyUI 进程已在运行，先停止旧进程');
-      this.stop();
-      // 等待进程完全停止
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await this.stop();
     }
 
     // 检查并清理端口占用（在环境检查之前）
@@ -728,6 +728,7 @@ comfyui_portable:
   private _startHealthCheck(port: number): void {
     this._stopHealthCheck();
     this._consecutiveFailures = 0;
+    this._processAliveConsecutiveBusy = 0;
     this._healthCheckStartTime = Date.now(); // 记录开始时间
 
     // 获取监听地址
@@ -762,8 +763,9 @@ comfyui_portable:
         logger.warn(`ComfyUI 服务异常，HTTP 状态码: ${response.status}`);
         this._consecutiveFailures++;
       } else {
-        // 成功，重置失败计数
+        // 成功，重置失败计数和繁忙计数
         this._consecutiveFailures = 0;
+        this._processAliveConsecutiveBusy = 0;
       }
 
       // 连续失败次数达到阈值
@@ -785,17 +787,43 @@ comfyui_portable:
         return;
       }
 
-      // 非宽容期：超时错误，可能是服务繁忙，仅警告
-      if (error?.name === 'AbortError') {
-        logger.warn(`健康检查超时: ${error.message || '未知'}（连续失败: ${this._consecutiveFailures + 1}/${this._maxConsecutiveFailures}）`);
+      // 检查进程是否仍然存活（可能只是暂时繁忙，如网络请求阻塞）
+      const isProcessAlive = this._process && !this._process.killed && this._process.pid !== undefined;
+      if (isProcessAlive) {
+        this._processAliveConsecutiveBusy++;
+        // 进程存活但繁忙：不累计失败次数，仅警告
+        if (error?.name === 'AbortError') {
+          logger.warn(
+            `健康检查超时（进程存活，可能繁忙）: ${error.message || '未知'}（连续繁忙: ${this._processAliveConsecutiveBusy}/${this._maxProcessAliveBusy}）`
+          );
+        } else {
+          const errorMessage = error?.message ?? '未知错误';
+          logger.warn(
+            [
+              `ComfyUI 服务暂时无响应（进程存活，可能繁忙）: ${errorMessage}`,
+              `（连续繁忙: ${this._processAliveConsecutiveBusy}/${this._maxProcessAliveBusy}）`
+            ].join('')
+          );
+        }
+
+        // 进程存活但繁忙次数过多，可能已卡死，此时才累计失败
+        if (this._processAliveConsecutiveBusy >= this._maxProcessAliveBusy) {
+          logger.warn(`进程存活但连续 ${this._processAliveConsecutiveBusy} 次无响应，视为异常`);
+          this._consecutiveFailures++;
+          this._processAliveConsecutiveBusy = 0;
+        }
       } else {
-        // 网络错误等
-        const errorMessage = error?.message ?? '未知错误';
-        logger.warn(
-          `ComfyUI 服务暂时无响应: ${errorMessage}（连续失败: ${this._consecutiveFailures + 1}/${this._maxConsecutiveFailures}）`
-        );
+        // 进程已退出，直接累计失败
+        if (error?.name === 'AbortError') {
+          logger.warn(`健康检查超时: ${error.message || '未知'}（连续失败: ${this._consecutiveFailures + 1}/${this._maxConsecutiveFailures}）`);
+        } else {
+          const errorMessage = error?.message ?? '未知错误';
+          logger.warn(
+            `ComfyUI 服务暂时无响应: ${errorMessage}（连续失败: ${this._consecutiveFailures + 1}/${this._maxConsecutiveFailures}）`
+          );
+        }
+        this._consecutiveFailures++;
       }
-      this._consecutiveFailures++;
 
       if (this._consecutiveFailures >= this._maxConsecutiveFailures) {
         logger.error(`ComfyUI 服务连续 ${this._consecutiveFailures} 次健康检查失败`);
@@ -825,26 +853,30 @@ comfyui_portable:
 
     // 检查重启次数限制
     if (stateManager.restartAttempts < stateManager.maxRestartAttempts) {
-      // 先停止可能存在的进程
+      // 先停止可能存在的进程（等待进程真正退出）
       if (this._process && !this._process.killed) {
         logger.info('停止旧进程...');
-        this.stop();
-        // 等待进程完全停止
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await this.stop();
       }
+
+      // 清理数据库锁文件
+      const comfyuiPath = configManager.get('comfyuiPath');
+      if (comfyuiPath) {
+        this._cleanDatabaseLockFiles(comfyuiPath);
+      }
+
+      // 等待端口释放
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       // 增加重启计数
       stateManager.incrementRestartAttempts();
       logger.info(`准备重启（${stateManager.restartAttempts}/${stateManager.maxRestartAttempts}）`);
 
-      // 延迟后重启
-      setTimeout(() => {
-        void this.start();
-      }, 3000);
+      // 启动新进程
+      await this.start();
     } else {
       logger.error('自动恢复失败，已达到最大重启次数');
       dialog.showErrorBox('服务异常', 'ComfyUI 服务异常且自动恢复失败，请手动重启应用');
-      // 不再重置重启计数，防止无限重启循环
     }
   }
 
@@ -991,7 +1023,7 @@ comfyui_portable:
   }
 
   // 停止进程 - 优化响应速度
-  public stop(): void {
+  public stop(): Promise<void> {
     // 停止健康检查
     this._stopHealthCheck();
 
@@ -1004,7 +1036,7 @@ comfyui_portable:
     if (!this._process || this._process.killed) {
       stateManager.status = Status.STOPPED;
       this._notifyStatusChange();
-      return;
+      return Promise.resolve();
     }
 
     const previousStatus = stateManager.status;
@@ -1020,77 +1052,81 @@ comfyui_portable:
     }
 
     const pid = this._process.pid;
-    let isKilled = false;
+    const proc = this._process;
 
-    // 清理函数
-    const cleanup = () => {
-      if (isKilled) return;
-      isKilled = true;
-      this._process = null;
-      stateManager.status = Status.STOPPED;
-      stateManager.setManualStop(false);
-      // 用户手动停止时重置重启计数器，允许后续手动启动
-      stateManager.resetRestartAttempts();
-      this._notifyStatusChange();
-      logger.info('ComfyUI进程已停止');
-    };
+    return new Promise<void>((resolve) => {
+      let isKilled = false;
 
-    try {
-      // Windows 上直接使用 SIGKILL 强制杀死进程树（更可靠且快速）
-      // 因为 Windows 不支持 SIGTERM，tree-kill 的 SIGTERM 在 Windows 上可能不可靠
-      const signal = process.platform === 'win32' ? 'SIGKILL' : 'SIGTERM';
+      const cleanup = () => {
+        if (isKilled) return;
+        isKilled = true;
+        this._process = null;
+        stateManager.status = Status.STOPPED;
+        stateManager.setManualStop(false);
+        // 用户手动停止时重置重启计数器，允许后续手动启动
+        stateManager.resetRestartAttempts();
+        this._notifyStatusChange();
+        logger.info('ComfyUI进程已停止');
+        resolve();
+      };
 
-      if (pid !== undefined) {
-        kill(pid, signal, err => {
-          if (err) {
-            logger.warn(`${signal} 失败：${err.message}，尝试 SIGKILL`);
-            // 失败时直接使用 SIGKILL
-            this._forceKillProcess(pid, cleanup);
-          } else {
-            // 成功杀死进程，立即清理
-            cleanup();
-          }
-        });
-      }
+      try {
+        // Windows 上直接使用 SIGKILL 强制杀死进程树（更可靠且快速）
+        // 因为 Windows 不支持 SIGTERM，tree-kill 的 SIGTERM 在 Windows 上可能不可靠
+        const signal = process.platform === 'win32' ? 'SIGKILL' : 'SIGTERM';
 
-      // 1.5秒后强制杀死（从 3 秒优化，提高响应速度）
-      const killTimer = setTimeout(() => {
-        if (!isKilled && pid !== undefined) {
-          logger.warn('优雅停止超时，强制杀死进程');
-          kill(pid, 'SIGKILL', err => {
+        if (pid !== undefined) {
+          kill(pid, signal, err => {
             if (err) {
-              logger.error(`强制停止失败：${err.message}`);
+              logger.warn(`${signal} 失败：${err.message}，尝试 SIGKILL`);
+              // 失败时直接使用 SIGKILL
+              this._forceKillProcess(pid, cleanup);
             } else {
-              logger.info('ComfyUI进程树已强制停止');
+              // 成功杀死进程，立即清理
+              cleanup();
             }
-            cleanup();
           });
         }
-      }, 1500);
 
-      // 监听退出
-      this._process.on('exit', () => {
-        clearTimeout(killTimer);
-        cleanup();
-      });
+        // 1.5秒后强制杀死（从 3 秒优化，提高响应速度）
+        const killTimer = setTimeout(() => {
+          if (!isKilled && pid !== undefined) {
+            logger.warn('优雅停止超时，强制杀死进程');
+            kill(pid, 'SIGKILL', err => {
+              if (err) {
+                logger.error(`强制停止失败：${err.message}`);
+              } else {
+                logger.info('ComfyUI进程树已强制停止');
+              }
+              cleanup();
+            });
+          }
+        }, 1500);
 
-      // 监听错误
-      this._process.on('error', err => {
-        logger.error(`进程错误：${err.message}`);
-        clearTimeout(killTimer);
-        cleanup();
-      });
-    } catch (err) {
-      const error = err as Error | null;
-      const errorMessage = error?.message ?? '未知错误';
-      logger.error(`停止异常：${errorMessage}`);
-      // 最后的强制清理
-      if (pid !== undefined) {
-        this._forceKillProcess(pid, cleanup);
-      } else {
-        cleanup();
+        // 监听退出
+        proc.on('exit', () => {
+          clearTimeout(killTimer);
+          cleanup();
+        });
+
+        // 监听错误
+        proc.on('error', err => {
+          logger.error(`进程错误：${err.message}`);
+          clearTimeout(killTimer);
+          cleanup();
+        });
+      } catch (err) {
+        const error = err as Error | null;
+        const errorMessage = error?.message ?? '未知错误';
+        logger.error(`停止异常：${errorMessage}`);
+        // 最后的强制清理
+        if (pid !== undefined) {
+          this._forceKillProcess(pid, cleanup);
+        } else {
+          cleanup();
+        }
       }
-    }
+    });
   }
 
   // 清理数据库锁文件
@@ -1146,41 +1182,15 @@ comfyui_portable:
     stateManager.resetRestartAttempts();
     this._notifyStatusChange();
 
-    // 如果进程正在运行或启动中，先停止
+    // 如果进程正在运行或启动中，先停止（等待进程真正退出）
     if (isRunning && this._process && !this._process.killed) {
       logger.info(`重启 ComfyUI：当前状态为 ${currentStatus}，先停止进程 PID: ${this._process.pid}`);
+      await this.stop();
+      logger.info('重启：旧进程已完全停止');
 
-      // 停止进程（isManualStop 由 stop() 设置，_handleExit 会检查 RESTARTING 状态跳过自动重启）
-      this.stop();
-
-      // 等待进程完全停止（最多等待10秒）
-      const maxWaitTime = 10000;
-      const checkInterval = 200;
-      let waited = 0;
-
-      while (waited < maxWaitTime) {
-        // stop() 的 cleanup 回调会异步修改 this._process，所以需要重新检查
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        if (!this._process || this._process.killed) {
-          logger.info('重启：旧进程已完全停止');
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, checkInterval));
-        waited += checkInterval;
-      }
-
-      // 如果超时仍未停止，强制杀死进程
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      if (this._process && !this._process.killed) {
-        logger.warn('重启：等待进程停止超时，强制杀死进程');
-        if (this._process.pid !== undefined) {
-          kill(this._process.pid, 'SIGKILL', () => {});
-        }
-        this._process = null;
-      }
-      // 等待端口完全释放（进程退出后端口可能还在 TIME_WAIT 状态）
+      // 等待端口释放（进程退出后端口可能还在 TIME_WAIT 状态）
       logger.info('等待端口释放...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       // 清理数据库锁文件
       const comfyuiPath = configManager.get('comfyuiPath');

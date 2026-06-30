@@ -62,7 +62,15 @@ function isValidFilePath(filePath: string | undefined): boolean {
   if (filePath === '' || filePath === undefined) return true;
   try {
     const normalized = path.normalize(filePath);
-    return normalized.length <= 4096 && !normalized.includes('\0');
+    if (normalized.length > 4096 || normalized.includes('\0')) return false;
+    if (path.isAbsolute(normalized)) {
+      const resolved = path.resolve(normalized);
+      const parentDir = path.dirname(resolved);
+      if (!resolved.startsWith(parentDir + path.sep) && resolved !== parentDir) {
+        return false;
+      }
+    }
+    return true;
   } catch {
     return false;
   }
@@ -194,7 +202,7 @@ export class IPCManager {
     // 停止
     typedHandle(IPC_CHANNELS.STOP_COMFYUI, () => {
       if (this._processManager) {
-        this._processManager.stop();
+        void this._processManager.stop();
       }
     });
 
@@ -412,25 +420,25 @@ export class IPCManager {
 
   // 注册终端处理器
   private _registerTerminalHandlers(): void {
-    ipcMain.on('terminal:write', (_event, sessionId: number, data: string) => {
+    ipcMain.on(IPC_CHANNELS.TERMINAL_WRITE, (_event, sessionId: number, data: string) => {
       if (this._terminalManager) {
         this._terminalManager.writeData(sessionId, data);
       }
     });
 
-    ipcMain.on('terminal:resize', (_event, sessionId: number, cols: number, rows: number) => {
+    ipcMain.on(IPC_CHANNELS.TERMINAL_RESIZE, (_event, sessionId: number, cols: number, rows: number) => {
       if (this._terminalManager) {
         this._terminalManager.resizeSession(sessionId, cols, rows);
       }
     });
 
-    ipcMain.on('terminal:kill', (_event, sessionId: number) => {
+    ipcMain.on(IPC_CHANNELS.TERMINAL_KILL, (_event, sessionId: number) => {
       if (this._terminalManager) {
         this._terminalManager.killSession(sessionId);
       }
     });
 
-    ipcMain.handle('terminal:create', (event, cols: number, rows: number) => {
+    ipcMain.handle(IPC_CHANNELS.TERMINAL_CREATE, (event, cols: number, rows: number) => {
       if (this._terminalManager) {
         const win = BrowserWindow.fromWebContents(event.sender);
         if (win && !win.isDestroyed()) {
@@ -442,7 +450,7 @@ export class IPCManager {
   }
 
   private _registerStatusHandlers(): void {
-    ipcMain.handle('getStatus', () => {
+    ipcMain.handle(IPC_CHANNELS.GET_STATUS, () => {
       return stateManager.getStateData();
     });
   }

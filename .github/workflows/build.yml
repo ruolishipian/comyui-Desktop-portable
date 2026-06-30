@@ -58,6 +58,7 @@ jobs:
           files: |
             dist/*.exe
             dist/*.zip
+            dist/latest.yml
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 上传到 Artifacts (备用)

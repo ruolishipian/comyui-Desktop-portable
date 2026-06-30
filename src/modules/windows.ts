@@ -15,7 +15,7 @@ import { httpProxyServer } from './http-proxy';
 import { createFileOperationMenuItems } from './menu-utils';
 import { PATHS } from './paths';
 import { stateManager } from './state';
-import { terminalManager } from './terminal';
+
 
 // 获取应用图标
 function getAppIcon(): NativeImage | undefined {
@@ -309,6 +309,28 @@ export class WindowManager {
       this._showContextMenu(win);
     });
 
+    // 拦截键盘快捷键刷新，统一走自定义刷新逻辑
+    win.webContents.on('before-input-event', (_event, input) => {
+      if (input.type !== 'keyDown') return;
+
+      const isCtrl = input.control || input.meta;
+      const isShift = input.shift;
+
+      // Ctrl+Shift+R 或 Ctrl+Shift+F5 → 强制刷新
+      if (isCtrl && isShift && (input.key === 'r' || input.key === 'R' || input.key === 'F5')) {
+        _event.preventDefault();
+        this._forceReloadWindow(win);
+        return;
+      }
+
+      // Ctrl+R 或 F5 → 普通刷新
+      if ((isCtrl && !isShift && (input.key === 'r' || input.key === 'R')) || input.key === 'F5') {
+        _event.preventDefault();
+        this._reloadWindow(win);
+        return;
+      }
+    });
+
     this._windows.set('main', win);
     this._notifyEvent('created', 'main');
   }
@@ -408,7 +430,7 @@ export class WindowManager {
     const menu = Menu.buildFromTemplate([
       {
         label: status === 'running' ? '停止 ComfyUI' : '启动 ComfyUI',
-        click: () => (status === 'running' ? processManager.stop() : void processManager.start())
+        click: () => (status === 'running' ? void processManager.stop() : void processManager.start())
       },
       {
         label: '重启 ComfyUI',
@@ -423,7 +445,8 @@ export class WindowManager {
       {
         label: '打开终端',
         click: () => {
-
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { terminalManager } = require('./terminal') as { terminalManager: import('./terminal').TerminalManager };
           terminalManager.createTerminalWindow();
         }
       },
@@ -439,31 +462,13 @@ export class WindowManager {
       {
         label: '刷新页面',
         click: () => {
-          if (win.isDestroyed()) return;
-          const targetUrl = httpProxyServer.url;
-          void win.loadURL('about:blank').then(() => {
-            if (!win.isDestroyed()) {
-              void win.loadURL(targetUrl);
-            }
-          });
+          this._reloadWindow(win);
         }
       },
       {
         label: '强制刷新（清除缓存）',
         click: () => {
-          if (win.isDestroyed()) return;
-          void (async () => {
-            try {
-              await this.clearBrowserCache();
-            } catch (err) {
-              console.error('[WindowManager] 强制刷新失败:', err);
-            }
-            const targetUrl = httpProxyServer.url;
-            await win.loadURL('about:blank');
-            if (!win.isDestroyed()) {
-              void win.loadURL(targetUrl);
-            }
-          })();
+          this._forceReloadWindow(win);
         }
       },
       {
@@ -516,7 +521,7 @@ export class WindowManager {
           'settings.html': '/shell/settings',
           'log.html': '/shell/logs',
           'select-env.html': '/shell/env-select',
-          'titlebar.html': '/shell/titlebar',
+
           'terminal.html': '/shell/terminal'
         };
         const route = shellRoutes[page] ?? `/shell/${page.replace('.html', '')}`;
@@ -652,6 +657,34 @@ export class WindowManager {
       console.error('[WindowManager] 清除所有缓存失败:', err);
       return false;
     }
+  }
+
+  // 普通刷新窗口
+  private _reloadWindow(win: BrowserWindow): void {
+    if (win.isDestroyed()) return;
+    const targetUrl = httpProxyServer.url;
+    void win.loadURL('about:blank').then(() => {
+      if (!win.isDestroyed()) {
+        void win.loadURL(targetUrl);
+      }
+    });
+  }
+
+  // 强制刷新窗口（清除所有缓存后刷新）
+  private _forceReloadWindow(win: BrowserWindow): void {
+    if (win.isDestroyed()) return;
+    void (async () => {
+      try {
+        await this.clearAllCache();
+      } catch (err) {
+        console.error('[WindowManager] 强制刷新失败:', err);
+      }
+      const targetUrl = httpProxyServer.url;
+      await win.loadURL('about:blank');
+      if (!win.isDestroyed()) {
+        void win.loadURL(targetUrl);
+      }
+    })();
   }
 
   // 注入 CSS 修复 Electron 启动器中的交互问题

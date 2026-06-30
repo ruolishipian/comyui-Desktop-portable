@@ -95,7 +95,7 @@ export class TrayManager {
         click: () => {
           if (this._processManager !== null) {
             if (status === 'running') {
-              this._processManager.stop();
+              void this._processManager.stop();
             } else {
               void this._processManager.start();
             }
