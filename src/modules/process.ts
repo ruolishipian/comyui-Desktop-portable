@@ -24,12 +24,23 @@ import { stateManager, Status } from './state';
 // 状态变更回调类型
 export type StatusChangeCallback = (data: StateData) => void;
 
+// 服务器就绪回调类型（日志检测到ComfyUI完全启动后触发）
+export type ServerReadyCallback = (port: number) => void;
+
 // 进程管理器
 export class ProcessManager {
   private _process: ChildProcess | null = null;
   private _timeoutTimer: NodeJS.Timeout | null = null;
   private _onStatusChange: StatusChangeCallback | null = null;
+  private _onServerReady: ServerReadyCallback | null = null;
+  private _serverReadyFired: boolean = false;
   private _waitOnAbortController: AbortController | null = null;
+
+  // 延迟就绪轮询（超时后继续等待ComfyUI真正启动）
+  private _lateReadyTimer: NodeJS.Timeout | null = null;
+  private readonly _lateReadyInterval: number = 3000;
+  private readonly _lateReadyMaxWait: number = 300000;
+  private _lateReadyStartTime: number = 0;
 
   // 健康检查
   private _healthCheckTimer: NodeJS.Timeout | null = null;
@@ -49,6 +60,11 @@ export class ProcessManager {
   // 设置状态变更回调
   public setOnStatusChange(callback: StatusChangeCallback): void {
     this._onStatusChange = callback;
+  }
+
+  // 设置服务器就绪回调（日志检测到ComfyUI完全启动后触发）
+  public setOnServerReady(callback: ServerReadyCallback): void {
+    this._onServerReady = callback;
   }
 
   // 检测前端路径（适配便携包）
@@ -454,6 +470,7 @@ comfyui_portable:
     // 更新状态
     stateManager.status = Status.STARTING;
     stateManager.setManualStop(false);
+    this._serverReadyFired = false;
     this._notifyStatusChange();
 
     logger.info('开始启动ComfyUI');
@@ -627,12 +644,7 @@ comfyui_portable:
           return;
         }
         this._clearTimeout();
-        stateManager.status = Status.RUNNING;
-        stateManager.resetRestartAttempts();
-        this._notifyStatusChange();
-        logger.info(`ComfyUI启动成功，端口：${port}`);
-        // 启动健康检查
-        this._startHealthCheck(port);
+        this._markAsRunning(port);
       })
       .catch((error: Error | null) => {
         // 检查是否已被取消
@@ -644,35 +656,12 @@ comfyui_portable:
         // 改进：先检查进程是否还在运行
         const isProcessAlive = this._process !== null && !this._process.killed && this._process.pid !== undefined;
         if (isProcessAlive) {
-          // 进程还活着，可能是插件加载慢或某些端点未响应
-          // 给予宽容处理：标记为运行中，但发出警告
+          // 进程还活着，但端点不可用，说明ComfyUI还在加载插件
+          // 不立即标记为RUNNING，而是启动延迟就绪轮询
           logger.warn(`HTTP端点检测超时，但进程仍在运行(PID: ${this._process?.pid})`);
           logger.warn('可能原因: 插件加载慢、某些自定义节点有问题、或端点响应慢');
-          logger.warn('启动器将标记为运行状态，请查看ComfyUI日志确认是否正常');
-
-          // 尝试一次基础端口检测
-          fetch(`http://${host}:${port}/`, { method: 'GET', signal: AbortSignal.timeout(5000) })
-            .then(response => {
-              if (response.ok) {
-                // 基础端口可访问，说明服务已启动
-                stateManager.status = Status.RUNNING;
-                stateManager.resetRestartAttempts();
-                this._notifyStatusChange();
-                logger.info('ComfyUI基础端口可访问，标记为运行状态');
-                this._startHealthCheck(port);
-              } else {
-                this._handleStartupFailure(port, error);
-              }
-            })
-            .catch(() => {
-              // 基础端口也不可访问，但进程还活着
-              // 可能是启动很慢，给予最后一次机会
-              logger.warn('基础端口暂时不可访问，但进程存活，将标记为运行并启动健康检查');
-              stateManager.status = Status.RUNNING;
-              stateManager.resetRestartAttempts();
-              this._notifyStatusChange();
-              this._startHealthCheck(port);
-            });
+          logger.info('启动延迟就绪轮询，等待ComfyUI真正启动完成...');
+          this._startLateReadyPolling(port, host);
         } else {
           // 进程已退出，这是真正的失败
           this._handleStartupFailure(port, error);
@@ -722,6 +711,74 @@ comfyui_portable:
     } else if (!autoRestart) {
       stateManager.resetRestartAttempts();
     }
+  }
+
+  // 启动延迟就绪轮询（HTTP端点检测超时后，继续等待ComfyUI真正启动）
+  private _startLateReadyPolling(port: number, host: string): void {
+    this._stopLateReadyPolling();
+    this._lateReadyStartTime = Date.now();
+
+    this._lateReadyTimer = setInterval(() => {
+      // 如果已经通过日志检测标记为就绪，停止轮询
+      if (this._serverReadyFired) {
+        this._stopLateReadyPolling();
+        return;
+      }
+
+      // 检查进程是否还在运行
+      const isProcessAlive = this._process !== null && !this._process.killed;
+      if (!isProcessAlive) {
+        this._stopLateReadyPolling();
+        return;
+      }
+
+      // 检查是否超过最大等待时间
+      const elapsed = Date.now() - this._lateReadyStartTime;
+      if (elapsed >= this._lateReadyMaxWait) {
+        logger.warn(`延迟就绪轮询超时(${this._lateReadyMaxWait / 1000}秒)，强制标记为运行状态`);
+        this._stopLateReadyPolling();
+        this._markAsRunning(port);
+        return;
+      }
+
+      // 尝试HTTP端点检测
+      fetch(`http://${host}:${port}/system_stats`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000)
+      })
+        .then(response => {
+          if (response.ok) {
+            logger.info('延迟就绪轮询：HTTP端点可用，ComfyUI已真正启动');
+            this._stopLateReadyPolling();
+            this._markAsRunning(port);
+          }
+        })
+        .catch(() => {
+          // 端点不可用，继续等待
+          const waitSec = Math.floor(elapsed / 1000);
+          logger.info(`延迟就绪轮询：端点暂不可用，继续等待（已等待${waitSec}秒）`);
+        });
+    }, this._lateReadyInterval);
+
+    logger.info(`延迟就绪轮询已启动（间隔${this._lateReadyInterval / 1000}秒，最长等待${this._lateReadyMaxWait / 1000}秒）`);
+  }
+
+  // 停止延迟就绪轮询
+  private _stopLateReadyPolling(): void {
+    if (this._lateReadyTimer) {
+      clearInterval(this._lateReadyTimer);
+      this._lateReadyTimer = null;
+    }
+  }
+
+  // 标记为运行状态（统一入口）
+  private _markAsRunning(port: number): void {
+    if (stateManager.status === Status.RUNNING) return;
+    stateManager.status = Status.RUNNING;
+    stateManager.resetRestartAttempts();
+    this._notifyStatusChange();
+    logger.info(`ComfyUI启动成功，端口：${port}`);
+    this._startHealthCheck(port);
   }
 
   // 启动健康检查
@@ -892,6 +949,8 @@ comfyui_portable:
   private _bindProcessEvents(_port: number): void {
     if (!this._process) return;
 
+    const port = _port;
+
     // 安全解码：优先 UTF-8，失败时回退到 latin1
     const safeDecode = (data: Buffer): string => {
       try {
@@ -901,10 +960,22 @@ comfyui_portable:
       }
     };
 
-    // 统一的行处理回调：解析 → 写日志
+    // 统一的行处理回调：解析 → 写日志 → 检测服务器就绪
     const handleLine = (line: string): void => {
       const entry = parseLogLine(line);
       logger.log(entry.message, entry.level);
+
+      // 检测ComfyUI完全启动的日志标志
+      // ComfyUI启动完成后会输出 "To see the GUI go to: http://127.0.0.1:8188"
+      if (!this._serverReadyFired && entry.message.includes('To see the GUI go to:')) {
+        this._serverReadyFired = true;
+        logger.info('检测到ComfyUI服务器完全启动（日志标志）');
+        this._stopLateReadyPolling();
+        this._markAsRunning(port);
+        if (this._onServerReady) {
+          this._onServerReady(port);
+        }
+      }
     };
 
     // stdout 行缓冲
@@ -1026,6 +1097,9 @@ comfyui_portable:
   public stop(): Promise<void> {
     // 停止健康检查
     this._stopHealthCheck();
+
+    // 停止延迟就绪轮询
+    this._stopLateReadyPolling();
 
     // 取消 wait-on 检测
     this._cancelWaitOn();

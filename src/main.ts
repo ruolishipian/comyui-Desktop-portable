@@ -143,6 +143,12 @@ function setupDependencies(): void {
     handleStatusChange(data);
   });
 
+  // 进程管理器 -> 服务器就绪回调（日志检测到ComfyUI完全启动后刷新窗口）
+  processManager.setOnServerReady((_port: number) => {
+    const proxyUrl = httpProxyServer.url;
+    windowManager.loadPage('main', proxyUrl);
+  });
+
   // 窗口管理器 -> 事件回调
   windowManager.setOnWindowEvent((event: string, windowType: WindowType | null) => {
     // 处理窗口事件
