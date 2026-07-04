@@ -622,9 +622,16 @@ export class WindowManager {
   // 清除浏览器缓存
   public async clearBrowserCache(): Promise<boolean> {
     try {
-      const ses = session.defaultSession;
-      await ses.clearCache();
-      console.log('[WindowManager] 浏览器缓存已清除');
+      const results = await Promise.allSettled([
+        session.defaultSession.clearCache(),
+        session.fromPartition('persist:comfyui-main').clearCache(),
+        session.fromPartition('persist:comfyui-shell').clearCache()
+      ]);
+      const failed = results.filter(r => r.status === 'rejected');
+      if (failed.length > 0) {
+        console.error('[WindowManager] 部分session缓存清除失败:', failed);
+      }
+      console.log('[WindowManager] 浏览器缓存已清除（所有session）');
       return true;
     } catch (err) {
       console.error('[WindowManager] 清除浏览器缓存失败:', err);
@@ -635,11 +642,17 @@ export class WindowManager {
   // 清除存储数据（包括 localStorage, sessionStorage, indexedDB 等）
   public async clearStorageData(): Promise<boolean> {
     try {
-      const ses = session.defaultSession;
-      await ses.clearStorageData({
-        storages: ['localstorage', 'indexdb', 'serviceworkers', 'cachestorage']
-      });
-      console.log('[WindowManager] 存储数据已清除');
+      const storages: Electron.ClearStorageDataOptions['storages'] = ['localstorage', 'indexdb', 'serviceworkers', 'cachestorage'];
+      const results = await Promise.allSettled([
+        session.defaultSession.clearStorageData({ storages }),
+        session.fromPartition('persist:comfyui-main').clearStorageData({ storages }),
+        session.fromPartition('persist:comfyui-shell').clearStorageData({ storages })
+      ]);
+      const failed = results.filter(r => r.status === 'rejected');
+      if (failed.length > 0) {
+        console.error('[WindowManager] 部分session存储清除失败:', failed);
+      }
+      console.log('[WindowManager] 存储数据已清除（所有session）');
       return true;
     } catch (err) {
       console.error('[WindowManager] 清除存储数据失败:', err);

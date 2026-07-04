@@ -407,6 +407,16 @@
             updateStatus(data);
           });
         }
+
+        // 主动获取当前状态，避免错过 did-finish-load 发送的初始状态
+        if (window.comfyuiDesktop && window.comfyuiDesktop.getStatus) {
+          try {
+            const statusData = await window.comfyuiDesktop.getStatus();
+            if (statusData) {
+              updateStatus(statusData);
+            }
+          } catch {}
+        }
       });
 
       function appendPlaceholder() {
