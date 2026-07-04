@@ -12,6 +12,7 @@ import { WindowType, WindowConfig } from '../types';
 
 import { configManager } from './config';
 import { httpProxyServer } from './http-proxy';
+import { logger } from './logger';
 import { createFileOperationMenuItems } from './menu-utils';
 import { PATHS } from './paths';
 import { stateManager } from './state';
@@ -663,10 +664,15 @@ export class WindowManager {
   private _reloadWindow(win: BrowserWindow): void {
     if (win.isDestroyed()) return;
     const targetUrl = httpProxyServer.url;
-    void win.loadURL('about:blank').then(() => {
-      if (!win.isDestroyed()) {
-        void win.loadURL(targetUrl);
-      }
+    logger.info(`刷新窗口: ${targetUrl}`);
+    win.webContents.loadURL(targetUrl).catch(err => {
+      console.error('[WindowManager] 刷新失败:', err);
+      // 降级：先加载空白页再加载目标
+      void win.loadURL('about:blank').then(() => {
+        if (!win.isDestroyed()) {
+          void win.loadURL(targetUrl);
+        }
+      });
     });
   }
 
@@ -677,12 +683,19 @@ export class WindowManager {
       try {
         await this.clearAllCache();
       } catch (err) {
-        console.error('[WindowManager] 强制刷新失败:', err);
+        console.error('[WindowManager] 强制刷新缓存清除失败:', err);
       }
       const targetUrl = httpProxyServer.url;
-      await win.loadURL('about:blank');
-      if (!win.isDestroyed()) {
-        void win.loadURL(targetUrl);
+      logger.info(`强制刷新窗口: ${targetUrl}`);
+      try {
+        await win.webContents.loadURL(targetUrl);
+      } catch (err) {
+        console.error('[WindowManager] 强制刷新失败:', err);
+        // 降级：先加载空白页再加载目标
+        await win.loadURL('about:blank');
+        if (!win.isDestroyed()) {
+          void win.loadURL(targetUrl);
+        }
       }
     })();
   }
