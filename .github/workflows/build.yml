@@ -21,10 +21,21 @@ jobs:
           node-version: 22.x
           cache: 'npm'
 
+      - name: 安装Visual Studio Build Tools
+        run: |
+          choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --quiet --norestart" --no-progress
+        shell: pwsh
+
       - name: 安装依赖（使用国内镜像）
         run: |
           npm config set registry https://registry.npmmirror.com
           npm install
+        shell: pwsh
+
+      - name: 修补node-pty并重新编译
+        run: |
+          node scripts/patch-node-pty.js
+          npx electron-rebuild -f -w node-pty
         shell: pwsh
 
       - name: 清理electron-builder缓存
