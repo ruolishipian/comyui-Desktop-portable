@@ -195,8 +195,10 @@ function handleStatusChange(data: StateData): void {
     httpProxyServer.updateComfyuiPort(0);
     windowManager.loadPage('main', 'loading.html');
   } else if (status === Status.FAILED) {
-    httpProxyServer.updateComfyuiPort(0);
-    windowManager.loadPage('main', 'error.html');
+    // 方案B：FAILED状态不影响代理转发，只用于触发自动重启
+    // 不调用 updateComfyuiPort(0)，代理继续转发到ComfyUI
+    // 不加载error页面，让用户看到ComfyUI的真实状态
+    logger.warn('ComfyUI服务标记为FAILED，但代理继续转发，等待自动重启');
   }
 }
 

@@ -47,11 +47,11 @@ export class ProcessManager {
   private readonly _healthCheckInterval: number = 30000; // 30秒检查一次（从15秒优化）
   private readonly _healthCheckTimeout: number = 15000; // 15秒超时（插件加载时响应慢）
   private _consecutiveFailures: number = 0;
-  private readonly _maxConsecutiveFailures: number = 5; // 连续失败5次才标记为失败（从3次优化）
+  private readonly _maxConsecutiveFailures: number = 3; // 连续失败3次才标记为失败（误判保护：20次繁忙×30秒=10分钟才算1次失败，3次=30分钟）
   private _healthCheckStartTime: number = 0; // 健康检查开始时间
   private readonly _healthCheckGracePeriod: number = 180000; // 启动后180秒内的宽容期（插件多时启动慢）
   private _processAliveConsecutiveBusy: number = 0; // 进程存活但繁忙的连续次数
-  private readonly _maxProcessAliveBusy: number = 10; // 进程存活但繁忙的最大容忍次数
+  private readonly _maxProcessAliveBusy: number = 20; // 进程存活但繁忙的最大容忍次数（10分钟才算1次失败）
 
   // 启动检测配置
   public static readonly MAX_FAIL_WAIT = 30 * 60 * 1000; // 30分钟最大等待时间

@@ -467,9 +467,15 @@ export class WindowManager {
         }
       },
       {
-        label: '强制刷新（清除缓存）',
+        label: '强制刷新（清除缓存，保护工作流）',
         click: () => {
           this._forceReloadWindow(win);
+        }
+      },
+      {
+        label: '深度清理（清除所有数据，会丢失工作流）',
+        click: () => {
+          void this._deepCleanWindow(win);
         }
       },
       {
@@ -639,8 +645,30 @@ export class WindowManager {
     }
   }
 
-  // 清除存储数据（包括 localStorage, sessionStorage, indexedDB 等）
+  // 清除存储数据（保护工作流：只清除缓存，不清除localStorage/indexedDB）
   public async clearStorageData(): Promise<boolean> {
+    try {
+      // 只清除ServiceWorker和CacheStorage，保护用户数据（工作流保存在localStorage）
+      const storages: Electron.ClearStorageDataOptions['storages'] = ['serviceworkers', 'cachestorage'];
+      const results = await Promise.allSettled([
+        session.defaultSession.clearStorageData({ storages }),
+        session.fromPartition('persist:comfyui-main').clearStorageData({ storages }),
+        session.fromPartition('persist:comfyui-shell').clearStorageData({ storages })
+      ]);
+      const failed = results.filter(r => r.status === 'rejected');
+      if (failed.length > 0) {
+        console.error('[WindowManager] 部分session存储清除失败:', failed);
+      }
+      console.log('[WindowManager] 缓存数据已清除（保护工作流）');
+      return true;
+    } catch (err) {
+      console.error('[WindowManager] 清除存储数据失败:', err);
+      return false;
+    }
+  }
+
+  // 深度清理（清除所有数据，包括localStorage/indexedDB，会丢失工作流）
+  public async clearAllStorageData(): Promise<boolean> {
     try {
       const storages: Electron.ClearStorageDataOptions['storages'] = ['localstorage', 'indexdb', 'serviceworkers', 'cachestorage'];
       const results = await Promise.allSettled([
@@ -652,10 +680,10 @@ export class WindowManager {
       if (failed.length > 0) {
         console.error('[WindowManager] 部分session存储清除失败:', failed);
       }
-      console.log('[WindowManager] 存储数据已清除（所有session）');
+      console.log('[WindowManager] 所有存储数据已清除（包括工作流）');
       return true;
     } catch (err) {
-      console.error('[WindowManager] 清除存储数据失败:', err);
+      console.error('[WindowManager] 深度清理失败:', err);
       return false;
     }
   }
@@ -711,6 +739,44 @@ export class WindowManager {
         }
       }
     })();
+  }
+
+  // 深度清理窗口（清除所有数据，包括工作流，需用户确认）
+  private async _deepCleanWindow(win: BrowserWindow): Promise<void> {
+    if (win.isDestroyed()) return;
+
+    // 弹出确认对话框
+    const result = await dialog.showMessageBox(win, {
+      type: 'warning',
+      title: '深度清理警告',
+      message: '确定要深度清理吗？',
+      detail: '这将清除所有缓存和用户数据，包括未保存的工作流！此操作不可撤销。',
+      buttons: ['取消', '确认深度清理'],
+      defaultId: 0,
+      cancelId: 0
+    });
+
+    if (result.response !== 1) return;
+
+    try {
+      await this.clearBrowserCache();
+      await this.clearAllStorageData();
+      logger.info('深度清理完成');
+    } catch (err) {
+      console.error('[WindowManager] 深度清理失败:', err);
+    }
+
+    const targetUrl = httpProxyServer.url;
+    logger.info(`深度清理后刷新窗口: ${targetUrl}`);
+    try {
+      await win.webContents.loadURL(targetUrl);
+    } catch (err) {
+      console.error('[WindowManager] 深度清理后刷新失败:', err);
+      await win.loadURL('about:blank');
+      if (!win.isDestroyed()) {
+        void win.loadURL(targetUrl);
+      }
+    }
   }
 
   // 注入 CSS 修复 Electron 启动器中的交互问题
