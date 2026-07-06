@@ -24,6 +24,10 @@ jobs:
           node-version: 22.x
           cache: 'npm'
 
+      - name: 安装Python依赖（distutils兼容）
+        run: pip install setuptools
+        shell: pwsh
+
       - name: 诊断VS安装
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
