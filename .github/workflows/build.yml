@@ -10,7 +10,10 @@ on:
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    runs-on: windows-2022
+    env:
+      GYP_MSVS_VERSION: 2022
+      npm_config_msvs_version: 2022
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
@@ -21,8 +24,15 @@ jobs:
           node-version: 22.x
           cache: 'npm'
 
-      - name: 设置MSVC编译环境
-        uses: ilammy/msvc-dev-cmd@v1
+      - name: 诊断VS安装
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) {
+            & $vswhere -all -products * -format json
+          } else {
+            Write-Host "vswhere.exe not found"
+          }
+        shell: pwsh
 
       - name: 安装依赖（使用国内镜像）
         run: |
