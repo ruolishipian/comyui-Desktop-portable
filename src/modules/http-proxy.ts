@@ -30,7 +30,7 @@ const SHELL_ROUTES: Record<string, string> = {
   '/shell/settings': 'settings.html',
   '/shell/logs': 'log.html',
   '/shell/env-select': 'select-env.html',
-  '/shell/titlebar': 'titlebar.html',
+
   '/shell/terminal': 'terminal.html'
 };
 
@@ -38,6 +38,7 @@ const HTML_CONTENT_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -223,7 +224,14 @@ export class HttpProxyServer {
     }
 
     try {
-      const filePath = getAssetsPath(relativePath);
+      const filePath = path.resolve(getAssetsPath(relativePath));
+      const assetsDir = path.resolve(getAssetsPath());
+      if (!filePath.startsWith(assetsDir + path.sep) && filePath !== assetsDir) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('Forbidden');
+        return;
+      }
+
       if (!fs.existsSync(filePath)) {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end(`File not found: ${relativePath}`);
@@ -259,43 +267,117 @@ export class HttpProxyServer {
     delete proxyHeaders['sec-fetch-mode'];
     delete proxyHeaders['sec-fetch-dest'];
 
+    const isWebSocketUpgrade = req.headers.upgrade?.toLowerCase() === 'websocket';
+    const isApiRequest = targetPath.startsWith('/api/') || targetPath.startsWith('/queue') || targetPath.startsWith('/system_stats');
+    const isFileRequest = targetPath.startsWith('/view') || targetPath.startsWith('/upload/');
+    const proxyTimeout = isWebSocketUpgrade ? 120000 : isFileRequest ? 120000 : isApiRequest ? 60000 : 30000;
+
+    let aborted = false;
+
+
+    const safeEndRes = (data?: string): void => {
+      if (res.writableEnded) return;
+      if (data && !res.headersSent) {
+        res.writeHead(502, { 'Content-Type': 'text/plain' });
+      }
+      res.end(data);
+    };
+
+    const cleanup = () => {
+      if (aborted) return;
+      aborted = true;
+      proxyReq.destroy();
+      safeEndRes('ComfyUI 后端不可用');
+    };
+
     const proxyReq = http.request(
       {
         hostname: targetHost,
         port: targetPort,
         path: targetPath,
         method: req.method,
-        headers: proxyHeaders
+        headers: proxyHeaders,
+        timeout: proxyTimeout
       },
       (proxyRes) => {
-        // 对 HTML 响应注入垫片脚本
+
+        if (aborted) {
+          proxyRes.resume();
+          return;
+        }
         const contentType = proxyRes.headers['content-type'] ?? '';
+        const contentLength = proxyRes.headers['content-length'];
+        if (isFileRequest) {
+          logger.info(`代理文件响应: ${targetPath} status=${proxyRes.statusCode} content-type=${contentType} content-length=${contentLength ?? 'chunked'}`);
+        }
         if (contentType.includes('text/html') && this._shimScript) {
-          this._proxyHtmlWithShim(proxyRes, res);
+          this._proxyHtmlWithShim(proxyRes, res, () => aborted);
         } else {
+          proxyRes.on('error', (err: Error) => {
+            if (!aborted) {
+              logger.warn(`代理响应流错误: ${err.message} path=${targetPath}`);
+            }
+            safeEndRes();
+          });
           res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
           proxyRes.pipe(res, { end: true });
         }
       }
     );
 
+    proxyReq.on('timeout', () => {
+      logger.warn(`代理请求超时(${proxyTimeout}ms): ${req.method} ${targetPath}`);
+      cleanup();
+    });
+
     proxyReq.on('error', (err: Error) => {
-      logger.warn(`代理请求失败: ${err.message}`);
-      if (!res.headersSent) {
-        res.writeHead(502, { 'Content-Type': 'text/plain' });
+      if (aborted) return;
+      if (err.message.includes('socket hang up') && res.headersSent) {
+        safeEndRes();
+        return;
       }
-      res.end('ComfyUI 后端不可用');
+      logger.warn(`代理请求失败: ${err.message}`);
+      cleanup();
+    });
+
+    res.on('close', () => {
+      if (aborted || res.writableEnded) return;
+      aborted = true;
+      proxyReq.destroy();
     });
 
     req.pipe(proxyReq, { end: true });
   }
 
-  private _proxyHtmlWithShim(proxyRes: http.IncomingMessage, res: http.ServerResponse): void {
+  private _proxyHtmlWithShim(proxyRes: http.IncomingMessage, res: http.ServerResponse, isAborted: () => boolean): void {
     const chunks: Buffer[] = [];
+    let totalSize = 0;
+    let htmlEnded = false;
+    const maxHtmlSize = 10 * 1024 * 1024;
+
+    const safeEnd = (data: string, statusCode: number = 502): void => {
+      if (htmlEnded || res.writableEnded) return;
+      htmlEnded = true;
+      if (!res.headersSent) {
+        res.writeHead(statusCode, { 'Content-Type': 'text/plain' });
+      }
+      res.end(data);
+    };
+
     proxyRes.on('data', (chunk: Buffer) => {
+      if (htmlEnded) return;
+      totalSize += chunk.length;
+      if (totalSize > maxHtmlSize) {
+        logger.warn(`代理HTML响应过大(${totalSize}字节)，终止传输`);
+        proxyRes.destroy();
+        safeEnd('Response too large');
+        return;
+      }
       chunks.push(chunk);
     });
     proxyRes.on('end', () => {
+      if (htmlEnded || isAborted()) return;
+      htmlEnded = true;
       let html = Buffer.concat(chunks).toString('utf-8');
       html = this._injectShim(html);
 
@@ -308,11 +390,9 @@ export class HttpProxyServer {
       res.end(html);
     });
     proxyRes.on('error', (err: Error) => {
+      if (htmlEnded) return;
       logger.error(`代理 HTML 响应失败: ${err.message}`);
-      if (!res.headersSent) {
-        res.writeHead(502, { 'Content-Type': 'text/plain' });
-      }
-      res.end('Bad Gateway');
+      safeEnd('Bad Gateway');
     });
   }
 
