@@ -21,10 +21,8 @@ jobs:
           node-version: 22.x
           cache: 'npm'
 
-      - name: 安装Visual Studio Build Tools
-        run: |
-          choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --quiet --norestart" --no-progress
-        shell: pwsh
+      - name: 设置MSVC编译环境
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: 安装依赖（使用国内镜像）
         run: |
