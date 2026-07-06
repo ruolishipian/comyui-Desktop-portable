@@ -102,6 +102,10 @@
 
       document.getElementById('btn-new').addEventListener('click', () => {
         if (window.comfyuiDesktop && window.comfyuiDesktop.terminalCreate) {
+          if (currentSessionId !== null) {
+            window.comfyuiDesktop.terminalKill(currentSessionId);
+            currentSessionId = null;
+          }
           window.comfyuiDesktop.terminalCreate(term.cols, term.rows).then((sessionId) => {
             if (sessionId !== null) {
               currentSessionId = sessionId;
@@ -124,10 +128,30 @@
         term.clear();
       });
 
-      // 自动创建一个终端会话
-      setTimeout(() => {
-        document.getElementById('btn-new').click();
-      }, 500);
+      var autoCreateRetries = 0;
+      var autoCreateMaxRetries = 25;
+
+      function autoCreateSession() {
+        if (window.comfyuiDesktop && window.comfyuiDesktop.terminalCreate) {
+          window.comfyuiDesktop.terminalCreate(term.cols, term.rows).then((sessionId) => {
+            if (sessionId !== null) {
+              currentSessionId = sessionId;
+              term.focus();
+            } else {
+              term.write('\x1b[31m[创建终端会话失败，请检查 Python 路径配置]\x1b[0m\r\n');
+            }
+          }).catch((err) => {
+            term.write('\x1b[31m[创建终端会话异常: ' + (err?.message || err) + ']\x1b[0m\r\n');
+          });
+        } else if (autoCreateRetries < autoCreateMaxRetries) {
+          autoCreateRetries++;
+          setTimeout(autoCreateSession, 200);
+        } else {
+          term.write('\x1b[31m[等待终端API超时，请重新打开终端窗口]\x1b[0m\r\n');
+        }
+      }
+
+      autoCreateSession();
     </script>
   </body>
 </html>

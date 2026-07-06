@@ -136,4 +136,11 @@
       }
     });
   } catch (e) {}
+
+  // ========== 7. 隐藏 Chromium 离线状态栏 ==========
+  try {
+    var style = document.createElement('style');
+    style.textContent = '#offline-indicator, .offline-indicator { display: none !important; }';
+    document.head.appendChild(style);
+  } catch (e) {}
 })();

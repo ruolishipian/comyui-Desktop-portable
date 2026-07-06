@@ -706,9 +706,9 @@ export class WindowManager {
     if (win.isDestroyed()) return;
     const targetUrl = httpProxyServer.url;
     logger.info(`刷新窗口: ${targetUrl}`);
+    this._loadRetryCount.delete('main');
     win.webContents.loadURL(targetUrl).catch(err => {
       console.error('[WindowManager] 刷新失败:', err);
-      // 降级：先加载空白页再加载目标
       void win.loadURL('about:blank').then(() => {
         if (!win.isDestroyed()) {
           void win.loadURL(targetUrl);
@@ -722,17 +722,18 @@ export class WindowManager {
     if (win.isDestroyed()) return;
     void (async () => {
       try {
+        await win.loadURL('about:blank');
         await this.clearAllCache();
       } catch (err) {
         console.error('[WindowManager] 强制刷新缓存清除失败:', err);
       }
       const targetUrl = httpProxyServer.url;
       logger.info(`强制刷新窗口: ${targetUrl}`);
+      this._loadRetryCount.delete('main');
       try {
         await win.webContents.loadURL(targetUrl);
       } catch (err) {
         console.error('[WindowManager] 强制刷新失败:', err);
-        // 降级：先加载空白页再加载目标
         await win.loadURL('about:blank');
         if (!win.isDestroyed()) {
           void win.loadURL(targetUrl);
@@ -759,6 +760,7 @@ export class WindowManager {
     if (result.response !== 1) return;
 
     try {
+      await win.loadURL('about:blank');
       await this.clearBrowserCache();
       await this.clearAllStorageData();
       logger.info('深度清理完成');
@@ -768,6 +770,7 @@ export class WindowManager {
 
     const targetUrl = httpProxyServer.url;
     logger.info(`深度清理后刷新窗口: ${targetUrl}`);
+    this._loadRetryCount.delete('main');
     try {
       await win.webContents.loadURL(targetUrl);
     } catch (err) {
