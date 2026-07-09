@@ -701,19 +701,27 @@ export class WindowManager {
     }
   }
 
-  // 普通刷新窗口
+  // 普通刷新窗口（模拟浏览器刷新，立即执行不等待前端状态）
   private _reloadWindow(win: BrowserWindow): void {
     if (win.isDestroyed()) return;
+
     const targetUrl = httpProxyServer.url;
     logger.info(`刷新窗口: ${targetUrl}`);
     this._loadRetryCount.delete('main');
-    win.webContents.loadURL(targetUrl).catch(err => {
-      console.error('[WindowManager] 刷新失败:', err);
-      void win.loadURL('about:blank').then(() => {
-        if (!win.isDestroyed()) {
-          void win.loadURL(targetUrl);
-        }
-      });
+
+    // 使用空白页强制中断当前页面，模拟浏览器刷新行为
+    void win.loadURL('about:blank').then(() => {
+      if (!win.isDestroyed()) {
+        void win.loadURL(targetUrl).catch(err => {
+          console.error('[WindowManager] 刷新失败:', err);
+        });
+      }
+    }).catch(err => {
+      console.error('[WindowManager] 导航到空白页失败:', err);
+      // 降级方案：直接重载
+      if (!win.isDestroyed()) {
+        win.webContents.reload();
+      }
     });
   }
 

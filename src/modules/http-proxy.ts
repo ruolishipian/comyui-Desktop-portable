@@ -270,7 +270,26 @@ export class HttpProxyServer {
     const isWebSocketUpgrade = req.headers.upgrade?.toLowerCase() === 'websocket';
     const isApiRequest = targetPath.startsWith('/api/') || targetPath.startsWith('/queue') || targetPath.startsWith('/system_stats');
     const isFileRequest = targetPath.startsWith('/view') || targetPath.startsWith('/upload/');
-    const proxyTimeout = isWebSocketUpgrade ? 120000 : isFileRequest ? 120000 : isApiRequest ? 60000 : 30000;
+
+    // 检测插件 API 请求（路径中包含 /api/ 或以插件名开头的 API）
+    const isPluginApiRequest = !isApiRequest && (
+      targetPath.includes('/api/') ||  // 如：/weilin/prompt_ui/api/...
+      targetPath.match(/^\/[^/]+\/[^/]+\/api\//) !== null  // 插件 API 路径模式
+    );
+
+    // 检测插件静态资源请求（可能需要加载大文件）
+    const isPluginAssetRequest = !isFileRequest && (
+      targetPath.includes('/extensions/') ||  // ComfyUI-Manager 扩展
+      targetPath.includes('/custom_nodes/')  // 自定义节点资源
+    );
+
+    // 根据请求类型设置超时时间
+    const proxyTimeout = isWebSocketUpgrade ? 120000 :      // WebSocket: 120秒
+                         isFileRequest ? 300000 :           // 文件请求: 300秒（支持大文件）
+                         isApiRequest ? 120000 :            // 核心 API: 120秒
+                         isPluginApiRequest ? 180000 :      // 插件 API: 180秒（插件初始化慢）
+                         isPluginAssetRequest ? 120000 :    // 插件资源: 120秒
+                         60000;                              // 其他: 60秒（从 30秒提升）
 
     let aborted = false;
 

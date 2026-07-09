@@ -44,14 +44,14 @@ export class ProcessManager {
 
   // 健康检查
   private _healthCheckTimer: NodeJS.Timeout | null = null;
-  private readonly _healthCheckInterval: number = 30000; // 30秒检查一次（从15秒优化）
-  private readonly _healthCheckTimeout: number = 15000; // 15秒超时（插件加载时响应慢）
+  private readonly _healthCheckInterval: number = 30000; // 30秒检查一次
+  private readonly _healthCheckTimeout: number = 30000; // 30秒超时（从15秒提升，插件加载时响应慢）
   private _consecutiveFailures: number = 0;
-  private readonly _maxConsecutiveFailures: number = 3; // 连续失败3次才标记为失败（误判保护：20次繁忙×30秒=10分钟才算1次失败，3次=30分钟）
+  private readonly _maxConsecutiveFailures: number = 3; // 连续失败3次才标记为失败
   private _healthCheckStartTime: number = 0; // 健康检查开始时间
-  private readonly _healthCheckGracePeriod: number = 180000; // 启动后180秒内的宽容期（插件多时启动慢）
+  private readonly _healthCheckGracePeriod: number = 300000; // 启动后300秒（5分钟）内的宽容期（插件多时启动慢）
   private _processAliveConsecutiveBusy: number = 0; // 进程存活但繁忙的连续次数
-  private readonly _maxProcessAliveBusy: number = 20; // 进程存活但繁忙的最大容忍次数（10分钟才算1次失败）
+  private readonly _maxProcessAliveBusy: number = 30; // 进程存活但繁忙的最大容忍次数（15分钟才算1次失败，从20次调整为30次）
 
   // 启动检测配置
   public static readonly MAX_FAIL_WAIT = 30 * 60 * 1000; // 30分钟最大等待时间
@@ -837,29 +837,41 @@ comfyui_portable:
       }
     } catch (err) {
       const error = err as Error | null;
+      const errorMessage = error?.message ?? '未知错误';
 
       // 在宽容期内，忽略所有错误（插件加载期间服务可能暂时不可用）
       if (inGracePeriod) {
-        logger.info(`健康检查失败（宽容期内，忽略）: 启动后 ${Math.floor(elapsed / 1000)} 秒 - ${error?.message ?? '未知'}`);
+        logger.info(`健康检查失败（宽容期内，忽略）: 启动后 ${Math.floor(elapsed / 1000)} 秒 - ${errorMessage}`);
         return;
       }
 
-      // 检查进程是否仍然存活（可能只是暂时繁忙，如网络请求阻塞）
+      // 区分超时类型
+      const isNetworkTimeout = errorMessage.includes('121') ||  // WinError 121: 信号灯超时
+                               errorMessage.includes('ETIMEDOUT') ||  // 网络连接超时
+                               errorMessage.includes('ECONNREFUSED');  // 连接被拒绝
+      const isAbortTimeout = error?.name === 'AbortError';  // 健康检查超时
+
+      // 网络超时：不累计失败（外部服务问题，非 ComfyUI 本身）
+      if (isNetworkTimeout) {
+        logger.info(`健康检查网络超时（外部服务问题，忽略）: ${errorMessage}`);
+        return;  // 不累计任何计数
+      }
+
+      // 检查进程是否仍然存活（可能只是暂时繁忙，如生成大图、加载模型）
       const isProcessAlive = this._process && !this._process.killed && this._process.pid !== undefined;
       if (isProcessAlive) {
         this._processAliveConsecutiveBusy++;
-        // 进程存活但繁忙：不累计失败次数，仅警告
-        if (error?.name === 'AbortError') {
-          logger.warn(
-            `健康检查超时（进程存活，可能繁忙）: ${error.message || '未知'}（连续繁忙: ${this._processAliveConsecutiveBusy}/${this._maxProcessAliveBusy}）`
+
+        // 进程存活但繁忙：不累计失败次数，仅记录信息
+        if (isAbortTimeout) {
+          logger.info(
+            `健康检查超时（进程存活，可能繁忙）: ${errorMessage} ` +
+              `（连续繁忙: ${this._processAliveConsecutiveBusy}/${this._maxProcessAliveBusy}）`
           );
         } else {
-          const errorMessage = error?.message ?? '未知错误';
-          logger.warn(
-            [
-              `ComfyUI 服务暂时无响应（进程存活，可能繁忙）: ${errorMessage}`,
+          logger.info(
+            `ComfyUI 服务暂时无响应（进程存活，可能繁忙）: ${errorMessage} ` +
               `（连续繁忙: ${this._processAliveConsecutiveBusy}/${this._maxProcessAliveBusy}）`
-            ].join('')
           );
         }
 
@@ -871,12 +883,15 @@ comfyui_portable:
         }
       } else {
         // 进程已退出，直接累计失败
-        if (error?.name === 'AbortError') {
-          logger.warn(`健康检查超时: ${error.message || '未知'}（连续失败: ${this._consecutiveFailures + 1}/${this._maxConsecutiveFailures}）`);
-        } else {
-          const errorMessage = error?.message ?? '未知错误';
+        if (isAbortTimeout) {
           logger.warn(
-            `ComfyUI 服务暂时无响应: ${errorMessage}（连续失败: ${this._consecutiveFailures + 1}/${this._maxConsecutiveFailures}）`
+            `健康检查超时: ${errorMessage} ` +
+              `（连续失败: ${this._consecutiveFailures + 1}/${this._maxConsecutiveFailures}）`
+          );
+        } else {
+          logger.warn(
+            `ComfyUI 服务暂时无响应: ${errorMessage} ` +
+              `（连续失败: ${this._consecutiveFailures + 1}/${this._maxConsecutiveFailures}）`
           );
         }
         this._consecutiveFailures++;
