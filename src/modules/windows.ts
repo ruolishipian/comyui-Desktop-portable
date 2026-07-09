@@ -719,6 +719,13 @@ export class WindowManager {
     logger.info(`刷新窗口: ${targetUrl}`);
     this._loadRetryCount.delete('main');
 
+    // 清除 beforeunload 事件，防止 ComfyUI 前端阻止导航（如工作流未保存）
+    try {
+      win.webContents.executeJavaScript('window.onbeforeunload = null;').catch(() => {});
+    } catch (err) {
+      // 忽略错误
+    }
+
     // 使用空白页强制中断当前页面，模拟浏览器刷新行为
     void win.loadURL('about:blank').then(() => {
       if (!win.isDestroyed()) {
@@ -754,6 +761,13 @@ export class WindowManager {
 
     this._isReloading = true;
     void (async () => {
+      // 清除 beforeunload 事件，防止 ComfyUI 前端阻止导航
+      try {
+        await win.webContents.executeJavaScript('window.onbeforeunload = null;');
+      } catch (err) {
+        // 忽略错误
+      }
+
       try {
         await win.loadURL('about:blank');
         await this.clearAllCache();
@@ -807,6 +821,14 @@ export class WindowManager {
     if (result.response !== 1) return;
 
     this._isReloading = true;
+
+    // 清除 beforeunload 事件，防止 ComfyUI 前端阻止导航
+    try {
+      await win.webContents.executeJavaScript('window.onbeforeunload = null;');
+    } catch (err) {
+      // 忽略错误
+    }
+
     try {
       await win.loadURL('about:blank');
       await this.clearBrowserCache();
