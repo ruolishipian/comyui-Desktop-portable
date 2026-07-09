@@ -782,6 +782,17 @@ export class WindowManager {
   private async _deepCleanWindow(win: BrowserWindow): Promise<void> {
     if (win.isDestroyed()) return;
 
+    // 防止并发刷新
+    if (this._isReloading) {
+      logger.info('深度清理: 已有刷新操作进行中，等待完成');
+      // 等待当前刷新完成（最多等待 10 秒）
+      const maxWait = 10000;
+      const startTime = Date.now();
+      while (this._isReloading && Date.now() - startTime < maxWait) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
     // 弹出确认对话框
     const result = await dialog.showMessageBox(win, {
       type: 'warning',
@@ -795,6 +806,7 @@ export class WindowManager {
 
     if (result.response !== 1) return;
 
+    this._isReloading = true;
     try {
       await win.loadURL('about:blank');
       await this.clearBrowserCache();
@@ -809,7 +821,10 @@ export class WindowManager {
     this._loadRetryCount.delete('main');
     try {
       await win.webContents.loadURL(targetUrl);
+      this._isReloading = false;
+      logger.info('深度清理后刷新窗口: 完成');
     } catch (err) {
+      this._isReloading = false;
       console.error('[WindowManager] 深度清理后刷新失败:', err);
       await win.loadURL('about:blank');
       if (!win.isDestroyed()) {
