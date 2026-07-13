@@ -704,8 +704,36 @@ export class WindowManager {
   // 刷新锁（防止并发刷新导致状态混乱）
   private _isReloading: boolean = false;
 
-  // 普通刷新窗口（模拟浏览器刷新，立即执行不等待前端状态）
-  private _reloadWindow(win: BrowserWindow): void {
+  // 清除所有会拦截页面刷新的前端逻辑（分层绕过）
+  private async _clearNavigationBlockers(win: BrowserWindow): Promise<void> {
+    if (win.isDestroyed()) return;
+    const wc = win.webContents;
+
+    try {
+      // 1. Electron 底层禁用页面卸载确认弹窗（根治 beforeunload）
+      // 这是 Electron 独有的 API，比执行 JS 更可靠
+      wc.once('will-prevent-unload', (e) => {
+        e.preventDefault(); // 直接无视页面的确认提示，不会弹出对话框
+      });
+
+      // 2. 页面内执行 JS 清空卸载钩子
+      await wc.executeJavaScript(`
+        // 清空内联 onxxx 事件
+        window.onbeforeunload = null;
+        window.onunload = null;
+        window.onpagehide = null;
+
+        // 全局标记本次是 Electron 强制刷新
+        window.__ELECTRON_FORCE_RELOAD__ = true;
+      `, true); // true：隔离世界，不受页面 CSP 限制
+
+    } catch (err) {
+      // 忽略错误，不影响后续刷新
+    }
+  }
+
+  // 普通刷新窗口（等同 F5，复用缓存）
+  private async _reloadWindow(win: BrowserWindow): Promise<void> {
     if (win.isDestroyed()) return;
 
     // 防止并发刷新
@@ -719,38 +747,43 @@ export class WindowManager {
     logger.info(`刷新窗口: ${targetUrl}`);
     this._loadRetryCount.delete('main');
 
-    // 清除 beforeunload 事件，防止 ComfyUI 前端阻止导航（如工作流未保存）
-    try {
-      win.webContents.executeJavaScript('window.onbeforeunload = null;').catch(() => {});
-    } catch (err) {
-      // 忽略错误
-    }
-
-    // 使用空白页强制中断当前页面，模拟浏览器刷新行为
-    void win.loadURL('about:blank').then(() => {
-      if (!win.isDestroyed()) {
-        void win.loadURL(targetUrl).then(() => {
-          this._isReloading = false;
-          logger.info('刷新窗口: 完成');
-        }).catch(err => {
-          this._isReloading = false;
-          console.error('[WindowManager] 刷新失败:', err);
-        });
-      } else {
+    // 超时熔断：防止 Promise 挂死
+    const REFRESH_TIMEOUT = 10000;
+    const timeoutTimer = setTimeout(() => {
+      if (this._isReloading) {
+        logger.error('刷新窗口: 超时，强制重载');
         this._isReloading = false;
+        if (!win.isDestroyed()) {
+          win.webContents.reload();
+        }
       }
-    }).catch(err => {
+    }, REFRESH_TIMEOUT);
+
+    try {
+      // 前置清除所有拦截
+      await this._clearNavigationBlockers(win);
+
+      // 标准 F5 刷新，使用磁盘缓存
+      win.webContents.reload();
+
+      // 成功，清除超时定时器
+      clearTimeout(timeoutTimer);
       this._isReloading = false;
-      console.error('[WindowManager] 导航到空白页失败:', err);
+      logger.info('刷新窗口: 完成');
+    } catch (err) {
+      clearTimeout(timeoutTimer);
+      this._isReloading = false;
+      const error = err as Error;
+      logger.error(`刷新窗口: 异常 - ${error.message}`);
       // 降级方案：直接重载
       if (!win.isDestroyed()) {
         win.webContents.reload();
       }
-    });
+    }
   }
 
-  // 强制刷新窗口（清除所有缓存后刷新）
-  private _forceReloadWindow(win: BrowserWindow): void {
+  // 强制刷新窗口（等同 Ctrl+F5，清空缓存）
+  private async _forceReloadWindow(win: BrowserWindow): Promise<void> {
     if (win.isDestroyed()) return;
 
     // 防止并发刷新
@@ -760,36 +793,46 @@ export class WindowManager {
     }
 
     this._isReloading = true;
-    void (async () => {
-      // 清除 beforeunload 事件，防止 ComfyUI 前端阻止导航
-      try {
-        await win.webContents.executeJavaScript('window.onbeforeunload = null;');
-      } catch (err) {
-        // 忽略错误
-      }
+    const targetUrl = httpProxyServer.url;
+    logger.info(`强制刷新窗口: ${targetUrl}`);
+    this._loadRetryCount.delete('main');
 
-      try {
-        await win.loadURL('about:blank');
-        await this.clearAllCache();
-      } catch (err) {
-        console.error('[WindowManager] 强制刷新缓存清除失败:', err);
-      }
-      const targetUrl = httpProxyServer.url;
-      logger.info(`强制刷新窗口: ${targetUrl}`);
-      this._loadRetryCount.delete('main');
-      try {
-        await win.webContents.loadURL(targetUrl);
+    // 超时熔断
+    const REFRESH_TIMEOUT = 10000;
+    const timeoutTimer = setTimeout(() => {
+      if (this._isReloading) {
+        logger.error('强制刷新窗口: 超时，强制重载');
         this._isReloading = false;
-        logger.info('强制刷新窗口: 完成');
-      } catch (err) {
-        this._isReloading = false;
-        console.error('[WindowManager] 强制刷新失败:', err);
-        await win.loadURL('about:blank');
         if (!win.isDestroyed()) {
-          void win.loadURL(targetUrl);
+          win.webContents.reloadIgnoringCache();
         }
       }
-    })();
+    }, REFRESH_TIMEOUT);
+
+    try {
+      // 前置清除所有拦截
+      await this._clearNavigationBlockers(win);
+
+      // 清除缓存
+      await this.clearAllCache();
+
+      // Electron 原生硬刷新：忽略缓存，重新请求所有资源
+      win.webContents.reloadIgnoringCache();
+
+      // 成功
+      clearTimeout(timeoutTimer);
+      this._isReloading = false;
+      logger.info('强制刷新窗口: 完成');
+    } catch (err) {
+      clearTimeout(timeoutTimer);
+      this._isReloading = false;
+      const error = err as Error;
+      logger.error(`强制刷新窗口: 异常 - ${error.message}`);
+      // 降级方案
+      if (!win.isDestroyed()) {
+        win.webContents.reloadIgnoringCache();
+      }
+    }
   }
 
   // 深度清理窗口（清除所有数据，包括工作流，需用户确认）
@@ -822,35 +865,45 @@ export class WindowManager {
 
     this._isReloading = true;
 
-    // 清除 beforeunload 事件，防止 ComfyUI 前端阻止导航
-    try {
-      await win.webContents.executeJavaScript('window.onbeforeunload = null;');
-    } catch (err) {
-      // 忽略错误
-    }
+    // 超时熔断
+    const REFRESH_TIMEOUT = 15000;
+    const timeoutTimer = setTimeout(() => {
+      if (this._isReloading) {
+        logger.error('深度清理: 超时，强制重载');
+        this._isReloading = false;
+        if (!win.isDestroyed()) {
+          win.webContents.reloadIgnoringCache();
+        }
+      }
+    }, REFRESH_TIMEOUT);
 
     try {
+      // 前置清除所有拦截
+      await this._clearNavigationBlockers(win);
+
+      // 执行深度清理
       await win.loadURL('about:blank');
       await this.clearBrowserCache();
       await this.clearAllStorageData();
       logger.info('深度清理完成');
-    } catch (err) {
-      console.error('[WindowManager] 深度清理失败:', err);
-    }
 
-    const targetUrl = httpProxyServer.url;
-    logger.info(`深度清理后刷新窗口: ${targetUrl}`);
-    this._loadRetryCount.delete('main');
-    try {
+      // 刷新窗口
+      const targetUrl = httpProxyServer.url;
+      logger.info(`深度清理后刷新窗口: ${targetUrl}`);
+      this._loadRetryCount.delete('main');
       await win.webContents.loadURL(targetUrl);
+
+      clearTimeout(timeoutTimer);
       this._isReloading = false;
       logger.info('深度清理后刷新窗口: 完成');
     } catch (err) {
+      clearTimeout(timeoutTimer);
       this._isReloading = false;
-      console.error('[WindowManager] 深度清理后刷新失败:', err);
-      await win.loadURL('about:blank');
+      const error = err as Error;
+      logger.error(`深度清理失败: ${error.message}`);
+      // 降级方案
       if (!win.isDestroyed()) {
-        void win.loadURL(targetUrl);
+        win.webContents.reloadIgnoringCache();
       }
     }
   }
