@@ -433,7 +433,7 @@ comfyui_portable:
     // 清理数据库锁文件（防止重启时数据库锁定问题）
     const comfyuiPath = configManager.get('comfyuiPath');
     if (comfyuiPath) {
-      this._cleanDatabaseLockFiles(comfyuiPath);
+      await this._cleanDatabaseLockFiles(comfyuiPath);
     }
 
     // 环境检查
@@ -934,7 +934,7 @@ comfyui_portable:
       // 清理数据库锁文件
       const comfyuiPath = configManager.get('comfyuiPath');
       if (comfyuiPath) {
-        this._cleanDatabaseLockFiles(comfyuiPath);
+        await this._cleanDatabaseLockFiles(comfyuiPath);
       }
 
       // 等待端口释放
@@ -1219,7 +1219,7 @@ comfyui_portable:
   }
 
   // 清理数据库锁文件
-  private _cleanDatabaseLockFiles(comfyuiPath: string): void {
+  private async _cleanDatabaseLockFiles(comfyuiPath: string): Promise<void> {
     const userDirectory = path.join(comfyuiPath, 'user');
     const dbPath = path.join(userDirectory, 'comfyui.db');
 
@@ -1238,75 +1238,93 @@ comfyui_portable:
 
     const allFiles = [...lockFiles, ...managerLogFiles];
 
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 500;
+
     for (const lockFile of allFiles) {
-      try {
-        if (fsSync.existsSync(lockFile)) {
-          fsSync.unlinkSync(lockFile);
-          logger.info(`已清理锁文件: ${path.basename(lockFile)}`);
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+          if (fsSync.existsSync(lockFile)) {
+            fsSync.unlinkSync(lockFile);
+            logger.info(`已清理锁文件: ${path.basename(lockFile)}`);
+          }
+          break;
+        } catch (err) {
+          const error = err as Error;
+          if (attempt < MAX_RETRIES - 1) {
+            logger.warn(`清理锁文件 ${path.basename(lockFile)} 失败（第${attempt + 1}次），重试中...`);
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+          } else {
+            logger.warn(`清理锁文件失败 ${path.basename(lockFile)}: ${error.message}`);
+          }
         }
-      } catch (err) {
-        const error = err as Error;
-        logger.warn(`清理锁文件失败 ${path.basename(lockFile)}: ${error.message}`);
       }
     }
   }
 
   // 重启进程
   public async restart(): Promise<void> {
-    // 停止健康检查
-    this._stopHealthCheck();
+    try {
+      // 停止健康检查
+      this._stopHealthCheck();
 
-    // 取消 wait-on 检测
-    this._cancelWaitOn();
+      // 取消 wait-on 检测
+      this._cancelWaitOn();
 
-    // 清除超时定时器
-    this._clearTimeout();
+      // 清除超时定时器
+      this._clearTimeout();
 
-    // 检查当前状态（在设置 RESTARTING 之前）
-    const currentStatus = stateManager.status;
-    const isRunning = currentStatus === Status.RUNNING || currentStatus === Status.STARTING;
+      // 检查当前状态（在设置 RESTARTING 之前）
+      const currentStatus = stateManager.status;
+      const isRunning = currentStatus === Status.RUNNING || currentStatus === Status.STARTING;
 
-    // 设置重启状态（在 stop() 之前设置，防止 _handleExit 触发自动重启）
-    stateManager.status = Status.RESTARTING;
-    stateManager.resetRestartAttempts();
-    this._notifyStatusChange();
+      // 设置重启状态（在 stop() 之前设置，防止 _handleExit 触发自动重启）
+      stateManager.status = Status.RESTARTING;
+      stateManager.resetRestartAttempts();
+      this._notifyStatusChange();
 
-    // 如果进程正在运行或启动中，先停止（等待进程真正退出）
-    if (isRunning && this._process && !this._process.killed) {
-      logger.info(`重启 ComfyUI：当前状态为 ${currentStatus}，先停止进程 PID: ${this._process.pid}`);
-      await this.stop();
-      logger.info('重启：旧进程已完全停止');
+      // 如果进程正在运行或启动中，先停止（等待进程真正退出）
+      if (isRunning && this._process && !this._process.killed) {
+        logger.info(`重启 ComfyUI：当前状态为 ${currentStatus}，先停止进程 PID: ${this._process.pid}`);
+        await this.stop();
+        logger.info('重启：旧进程已完全停止');
 
-      // 等待端口释放（进程退出后端口可能还在 TIME_WAIT 状态）
-      logger.info('等待端口释放...');
-      await new Promise(resolve => setTimeout(resolve, 1500));
+        // 等待端口释放（进程退出后端口可能还在 TIME_WAIT 状态）
+        logger.info('等待端口释放...');
+        await new Promise(resolve => setTimeout(resolve, 1500));
 
-      // 清理数据库锁文件
-      const comfyuiPath = configManager.get('comfyuiPath');
-      if (comfyuiPath) {
-        this._cleanDatabaseLockFiles(comfyuiPath);
+        // 清理数据库锁文件
+        const comfyuiPath = configManager.get('comfyuiPath');
+        if (comfyuiPath) {
+          await this._cleanDatabaseLockFiles(comfyuiPath);
+        }
+      } else if (!this._process || this._process.killed) {
+        logger.info('重启 ComfyUI：没有运行中的进程，直接启动');
+      } else {
+        logger.info(`重启 ComfyUI：当前状态为 ${currentStatus}，直接启动`);
       }
-    } else if (!this._process || this._process.killed) {
-      logger.info('重启 ComfyUI：没有运行中的进程，直接启动');
-    } else {
-      logger.info(`重启 ComfyUI：当前状态为 ${currentStatus}，直接启动`);
-    }
 
-    // 重启时也检查并清理端口占用
-    const serverConfig = configManager.server;
-    const targetPort = serverConfig.port ?? 8188;
-    logger.info(`重启前检查端口 ${targetPort} 是否可用...`);
-    const cleanResult = await environmentChecker.checkAndCleanPort(targetPort);
-    if (cleanResult.cleaned) {
-      logger.info(`已清理占用端口 ${targetPort} 的进程: PID ${cleanResult.pids.join(', ')}`);
-      // 清理后额外等待端口释放
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    } else if (cleanResult.error) {
-      logger.warn(`端口 ${targetPort} 清理失败: ${cleanResult.error}，将尝试使用其他端口`);
-    }
+      // 重启时也检查并清理端口占用
+      const serverConfig = configManager.server;
+      const targetPort = serverConfig.port ?? 8188;
+      logger.info(`重启前检查端口 ${targetPort} 是否可用...`);
+      const cleanResult = await environmentChecker.checkAndCleanPort(targetPort);
+      if (cleanResult.cleaned) {
+        logger.info(`已清理占用端口 ${targetPort} 的进程: PID ${cleanResult.pids.join(', ')}`);
+        // 清理后额外等待端口释放
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } else if (cleanResult.error) {
+        logger.warn(`端口 ${targetPort} 清理失败: ${cleanResult.error}，将尝试使用其他端口`);
+      }
 
-    // 启动新进程
-    await this.start();
+      // 启动新进程
+      await this.start();
+    } catch (err) {
+      const error = err as Error;
+      logger.error(`重启 ComfyUI 失败: ${error.message}`);
+      stateManager.status = Status.FAILED;
+      this._notifyStatusChange();
+    }
   }
 
   // 清除超时定时器

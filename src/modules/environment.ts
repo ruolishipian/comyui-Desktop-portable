@@ -281,8 +281,11 @@ export class EnvironmentChecker {
         const lines = stdout.split('\n').filter(line => line.trim());
 
         for (const line of lines) {
-          // 解析 netstat 输出，格式如: "  TCP    127.0.0.1:8188    0.0.0.0:0    LISTENING    12345"
           const parts = line.trim().split(/\s+/);
+          const localAddress = parts[1] ?? '';
+          const state = parts[3] ?? '';
+          if (!localAddress.endsWith(`:${port}`)) continue;
+          if (state !== 'LISTENING') continue;
           const pidStr = parts[parts.length - 1] ?? '';
           const pid = parseInt(pidStr, 10);
           if (!isNaN(pid) && pid > 0 && !pids.includes(pid)) {

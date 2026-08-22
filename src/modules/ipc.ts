@@ -209,7 +209,10 @@ export class IPCManager {
     // 重启
     typedHandle(IPC_CHANNELS.RESTART_COMFYUI, () => {
       if (this._processManager) {
-        void this._processManager.restart();
+        this._processManager.restart().catch((err: unknown) => {
+          const error = err as Error | null;
+          logger.error(`IPC 重启 ComfyUI 失败: ${error?.message ?? '未知错误'}`);
+        });
       }
     });
   }
