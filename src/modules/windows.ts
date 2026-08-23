@@ -13,9 +13,18 @@ import { WindowType, WindowConfig } from '../types';
 import { configManager } from './config';
 import { httpProxyServer } from './http-proxy';
 import { logger } from './logger';
-import { createFileOperationMenuItems } from './menu-utils';
+import {
+  createComfyUIControlMenuItems,
+  createCommonNavMenuItems,
+  createFileOperationMenuItems,
+  createRefreshMenuItems,
+  createResetConfigMenuItem
+} from './menu-utils';
 import { PATHS } from './paths';
+import { processManager } from './process';
 import { stateManager } from './state';
+import { terminalManager } from './terminal';
+import { debugLog, toError } from './utils';
 
 
 // 获取应用图标
@@ -23,7 +32,7 @@ function getAppIcon(): NativeImage | undefined {
   const iconPath = PATHS.APP_ICON();
 
   // 添加调试日志
-  console.log('[WindowManager] Attempting to load icon from:', iconPath);
+  debugLog('[WindowManager] Attempting to load icon from:', iconPath);
 
   if (fs.existsSync(iconPath)) {
     try {
@@ -32,7 +41,7 @@ function getAppIcon(): NativeImage | undefined {
         console.error('[WindowManager] Icon loaded but is empty:', iconPath);
         return undefined;
       }
-      console.log('[WindowManager] Icon loaded successfully');
+      debugLog('[WindowManager] Icon loaded successfully');
       return icon;
     } catch (err) {
       console.error('[WindowManager] Failed to create icon from path:', iconPath, err);
@@ -196,11 +205,11 @@ export class WindowManager {
 
     // 窗口关闭逻辑 - 优化响应速度
     win.on('close', e => {
-      console.log('[Debug] Window close event, isQuiting:', global.isQuiting);
+      debugLog('[Debug] Window close event, isQuiting:', global.isQuiting);
 
       // 如果已经在退出流程中，允许关闭
       if (global.isQuiting) {
-        console.log('[Debug] Already quiting, allowing close');
+        debugLog('[Debug] Already quiting, allowing close');
         return;
       }
 
@@ -209,7 +218,7 @@ export class WindowManager {
 
       // 立即标记为退出状态，防止重复触发
       global.isQuiting = true;
-      console.log('[Debug] Set isQuiting to true');
+      debugLog('[Debug] Set isQuiting to true');
 
       // 异步保存窗口状态（不阻塞关闭流程）
       if (!win.isDestroyed()) {
@@ -320,14 +329,14 @@ export class WindowManager {
       // Ctrl+Shift+R 或 Ctrl+Shift+F5 → 强制刷新
       if (isCtrl && isShift && (input.key === 'r' || input.key === 'R' || input.key === 'F5')) {
         _event.preventDefault();
-        this._forceReloadWindow(win);
+        void this._forceReloadWindow(win);
         return;
       }
 
       // Ctrl+R 或 F5 → 普通刷新
       if ((isCtrl && !isShift && (input.key === 'r' || input.key === 'R')) || input.key === 'F5') {
         _event.preventDefault();
-        this._reloadWindow(win);
+        void this._reloadWindow(win);
         return;
       }
     });
@@ -423,67 +432,28 @@ export class WindowManager {
 
   // 显示右键菜单
   private _showContextMenu(win: BrowserWindow): void {
-    // 延迟加载避免循环依赖
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { processManager } = require('./process') as { processManager: import('./process').ProcessManager };
-    const status = stateManager.status;
+    const menuContext = {
+      processManager: {
+        start: () => processManager.start(),
+        stop: () => processManager.stop(),
+        restart: () => processManager.restart()
+      },
+      windowManager: this,
+      terminalManager: {
+        createTerminalWindow: () => terminalManager.createTerminalWindow()
+      }
+    } as Parameters<typeof createComfyUIControlMenuItems>[0];
 
     const menu = Menu.buildFromTemplate([
-      {
-        label: status === 'running' ? '停止 ComfyUI' : '启动 ComfyUI',
-        click: () => (status === 'running' ? void processManager.stop() : void processManager.start())
-      },
-      {
-        label: '重启 ComfyUI',
-        click: () => void processManager.restart()
-        // 重启功能在任何时候都可用
-      },
-      { type: 'separator' },
-      {
-        label: '查看实时日志',
-        click: () => this.createLogWindow()
-      },
-      {
-        label: '打开终端',
-        click: () => {
-          // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const { terminalManager } = require('./terminal') as { terminalManager: import('./terminal').TerminalManager };
-          terminalManager.createTerminalWindow();
-        }
-      },
-      {
-        label: '设置',
-        click: () => this.createSettingsWindow()
-      },
-      {
-        label: '重新选择环境',
-        click: () => this.createEnvSelectWindow()
-      },
+      ...createComfyUIControlMenuItems(menuContext),
+      ...createCommonNavMenuItems(menuContext),
       ...createFileOperationMenuItems(),
-      {
-        label: '刷新页面',
-        click: () => {
-          this._reloadWindow(win);
-        }
-      },
-      {
-        label: '强制刷新（清除缓存，保护工作流）',
-        click: () => {
-          this._forceReloadWindow(win);
-        }
-      },
-      {
-        label: '深度清理（清除所有数据，会丢失工作流）',
-        click: () => {
-          void this._deepCleanWindow(win);
-        }
-      },
-      {
-        label: '重置所有配置',
-        click: () => {
-          void this.resetConfig();
-        }
-      }
+      ...createRefreshMenuItems({
+        reload: () => void this._reloadWindow(win),
+        forceReload: () => void this._forceReloadWindow(win),
+        deepClean: () => void this._deepCleanWindow(win)
+      }),
+      createResetConfigMenuItem(menuContext)
     ]);
     menu.popup();
   }
@@ -637,7 +607,7 @@ export class WindowManager {
       if (failed.length > 0) {
         console.error('[WindowManager] 部分session缓存清除失败:', failed);
       }
-      console.log('[WindowManager] 浏览器缓存已清除（所有session）');
+      debugLog('[WindowManager] 浏览器缓存已清除（所有session）');
       return true;
     } catch (err) {
       console.error('[WindowManager] 清除浏览器缓存失败:', err);
@@ -659,7 +629,7 @@ export class WindowManager {
       if (failed.length > 0) {
         console.error('[WindowManager] 部分session存储清除失败:', failed);
       }
-      console.log('[WindowManager] 缓存数据已清除（保护工作流）');
+      debugLog('[WindowManager] 缓存数据已清除（保护工作流）');
       return true;
     } catch (err) {
       console.error('[WindowManager] 清除存储数据失败:', err);
@@ -680,7 +650,7 @@ export class WindowManager {
       if (failed.length > 0) {
         console.error('[WindowManager] 部分session存储清除失败:', failed);
       }
-      console.log('[WindowManager] 所有存储数据已清除（包括工作流）');
+      debugLog('[WindowManager] 所有存储数据已清除（包括工作流）');
       return true;
     } catch (err) {
       console.error('[WindowManager] 深度清理失败:', err);
@@ -693,7 +663,7 @@ export class WindowManager {
     try {
       await this.clearBrowserCache();
       await this.clearStorageData();
-      console.log('[WindowManager] 所有缓存已清除');
+      debugLog('[WindowManager] 所有缓存已清除');
       return true;
     } catch (err) {
       console.error('[WindowManager] 清除所有缓存失败:', err);
@@ -773,7 +743,7 @@ export class WindowManager {
     } catch (err) {
       clearTimeout(timeoutTimer);
       this._isReloading = false;
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`刷新窗口: 异常 - ${error.message}`);
       // 降级方案：直接重载
       if (!win.isDestroyed()) {
@@ -826,7 +796,7 @@ export class WindowManager {
     } catch (err) {
       clearTimeout(timeoutTimer);
       this._isReloading = false;
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`强制刷新窗口: 异常 - ${error.message}`);
       // 降级方案
       if (!win.isDestroyed()) {
@@ -845,6 +815,7 @@ export class WindowManager {
       // 等待当前刷新完成（最多等待 10 秒）
       const maxWait = 10000;
       const startTime = Date.now();
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       while (this._isReloading && Date.now() - startTime < maxWait) {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
@@ -899,7 +870,7 @@ export class WindowManager {
     } catch (err) {
       clearTimeout(timeoutTimer);
       this._isReloading = false;
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`深度清理失败: ${error.message}`);
       // 降级方案
       if (!win.isDestroyed()) {

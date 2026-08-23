@@ -13,6 +13,7 @@ import { IPC_CHANNELS } from '../constants/ipc-channels';
 import { LogLevel } from '../types';
 
 import { configManager } from './config';
+import { toError } from './utils';
 
 const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
   error: 0,
@@ -416,7 +417,7 @@ export class Logger {
         }
       }
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       console.error('[Logger] 清理过期日志失败:', error.message);
     }
   }
@@ -471,7 +472,7 @@ export class Logger {
       }
       return await fs.promises.readFile(logFile, 'utf8');
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       return `[日志] 读取失败：${error.message}`;
     }
   }
@@ -483,7 +484,7 @@ export class Logger {
       this.info('日志已清空');
       return true;
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       this.error(`清空日志失败：${error.message}`);
       return false;
     }
@@ -564,7 +565,7 @@ export class Logger {
         console.log(`[Logger] 清理 ComfyUI 旧日志完成，删除了 ${deletedCount} 个文件`);
       }
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       console.error('[Logger] 清理 ComfyUI 旧日志失败:', error.message);
     }
   }
@@ -586,7 +587,7 @@ export class Logger {
       }
       return await fs.promises.readFile(this._comfyUILogFile, 'utf8');
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       return `[日志] 读取失败：${error.message}`;
     }
   }
@@ -597,7 +598,7 @@ export class Logger {
       await fs.promises.writeFile(this._comfyUILogFile, '', 'utf8');
       return true;
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       this.error(`清空 ComfyUI 日志失败：${error.message}`);
       return false;
     }

@@ -20,6 +20,7 @@ import { parseLogLine } from './log-parser';
 import { logger } from './logger';
 import { proxyManager } from './proxy';
 import { stateManager, Status } from './state';
+import { safeBufferDecode, toError } from './utils';
 
 // 状态变更回调类型
 export type StatusChangeCallback = (data: StateData) => void;
@@ -152,8 +153,8 @@ if sys.platform == 'win32' and sys.flags.utf8_mode:
         }
       }
     } catch (err) {
-      const error = err as Error | null;
-      const errorMessage = error?.message ?? '未知错误';
+      const error = toError(err);
+      const errorMessage = error.message;
       logger.warn(`部署 sitecustomize.py 失败: ${errorMessage}`);
     }
   }
@@ -208,8 +209,8 @@ if sys.platform == 'win32' and sys.flags.utf8_mode:
         logger.info(`已修复 gitpython endswith 兼容性问题: ${cmdPyPath}`);
       }
     } catch (err) {
-      const error = err as Error | null;
-      const errorMessage = error?.message ?? '未知错误';
+      const error = toError(err);
+      const errorMessage = error.message;
       logger.warn(`修复 gitpython 兼容性失败: ${errorMessage}`);
     }
   }
@@ -374,10 +375,9 @@ comfyui_portable:
     if (serverConfig.disableCUDA === true) args.push(argNames.disableCudaMalloc ?? '--disable-cuda-malloc');
     if (serverConfig.disableIPEX === true) args.push(argNames.disableIpexOptimize ?? '--disable-ipex-optimize');
 
-    // 自定义参数（白名单过滤）- 来自设置界面
+    // 自定义参数 - 来自设置界面，以用户输入为准（覆盖启动器参数）
     if (serverConfig.customArgs !== undefined && serverConfig.customArgs !== '') {
       logger.info(`[调试] 处理自定义参数: "${serverConfig.customArgs}"`);
-      const validPrefixes = ['--', '-'];
 
       // 改进的参数解析：正确处理带值的参数
       // 例如: "--extra-model-paths-config D:\path\to\file" 应该保留两个部分
@@ -388,17 +388,16 @@ comfyui_portable:
         const part = (parts[i] ?? '').trim();
         if (!part) continue;
 
-        // 如果是选项参数（以 -- 或 - 开头）
-        if (validPrefixes.some(prefix => part.startsWith(prefix))) {
+        // 选项参数（以 -- 开头）或前一个选项的值，保留
+        if (part.startsWith('--')) {
           customArgs.push(part);
         } else if (customArgs.length > 0) {
-          // 前一个参数是选项，当前是它的值，保留
           customArgs.push(part);
         }
         // 否则忽略（独立的非选项参数）
       }
 
-      logger.info(`[调试] 过滤后的自定义参数: ${JSON.stringify(customArgs)}`);
+      logger.info(`[调试] 自定义参数: ${JSON.stringify(customArgs)}`);
       if (customArgs.length > 0) args.push(...customArgs);
     }
 
@@ -420,21 +419,10 @@ comfyui_portable:
     }
 
     // 检查并清理端口占用（在环境检查之前）
-    const serverConfig = configManager.server;
-    const targetPort = serverConfig.port ?? 8188;
-    logger.info(`检查端口 ${targetPort} 是否可用...`);
-    const cleanResult = await environmentChecker.checkAndCleanPort(targetPort);
-    if (cleanResult.cleaned) {
-      logger.info(`已清理占用端口 ${targetPort} 的进程: PID ${cleanResult.pids.join(', ')}`);
-    } else if (cleanResult.error) {
-      logger.warn(`端口 ${targetPort} 清理失败: ${cleanResult.error}，将尝试使用其他端口`);
-    }
+    await this._preparePortAndLocks();
 
-    // 清理数据库锁文件（防止重启时数据库锁定问题）
+    const serverConfig = configManager.server;
     const comfyuiPath = configManager.get('comfyuiPath');
-    if (comfyuiPath) {
-      await this._cleanDatabaseLockFiles(comfyuiPath);
-    }
 
     // 环境检查
     logger.info('开始环境自检');
@@ -454,9 +442,8 @@ comfyui_portable:
             message: check.msg
           })
           .catch((err: unknown) => {
-            const error = err as Error | null;
-            const errorMessage = error?.message ?? '未知错误';
-            logger.error(`显示警告对话框失败：${errorMessage}`);
+            const error = toError(err);
+            logger.error(`显示警告对话框失败：${error.message}`);
           });
       }
     }
@@ -575,12 +562,12 @@ comfyui_portable:
       // 使用 HTTP 端点检测启动成功（更可靠）
       this._waitForServerReady(port);
     } catch (err) {
-      const error = err as Error | null;
+      const error = toError(err);
       this._clearTimeout();
       this._cancelWaitOn();
       stateManager.status = Status.FAILED;
       this._notifyStatusChange();
-      const errorMessage = error?.message ?? '未知错误';
+      const errorMessage = error.message;
       logger.error(`启动异常：${errorMessage}`);
       dialog.showErrorBox('启动失败', errorMessage);
     }
@@ -597,7 +584,7 @@ comfyui_portable:
 
     // 获取监听地址
     const listenAddress = serverConfig.listenAll === true ? '0.0.0.0' : '127.0.0.1';
-    const host = serverConfig.listenAll === true ? 'localhost' : '127.0.0.1';
+    const host = '127.0.0.1';
 
     logger.info(`启动超时设置: ${maxWaitTime}ms (配置: ${configTimeout}ms)`);
     logger.info(`监听地址: ${listenAddress}:${port}`);
@@ -676,7 +663,7 @@ comfyui_portable:
     this._notifyStatusChange();
 
     // 安全访问 error.message，防止 null 错误
-    const errorMessage = error?.message ?? '未知错误（可能是启动被取消）';
+    const errorMessage = toError(error).message;
     logger.error(`服务器启动失败: ${errorMessage}`);
 
     // 启动失败时杀死进程
@@ -788,9 +775,8 @@ comfyui_portable:
     this._processAliveConsecutiveBusy = 0;
     this._healthCheckStartTime = Date.now(); // 记录开始时间
 
-    // 获取监听地址
-    const serverConfig = configManager.server;
-    const host = serverConfig.listenAll === true ? 'localhost' : '127.0.0.1';
+    // 统一使用 127.0.0.1 进行健康检查检测（避免 localhost 解析问题）
+    const host = '127.0.0.1';
 
     this._healthCheckTimer = setInterval(() => {
       void this._doHealthCheck(port, host);
@@ -836,8 +822,8 @@ comfyui_portable:
         void this._attemptRecovery();
       }
     } catch (err) {
-      const error = err as Error | null;
-      const errorMessage = error?.message ?? '未知错误';
+      const error = toError(err);
+      const errorMessage = error.message;
 
       // 在宽容期内，忽略所有错误（插件加载期间服务可能暂时不可用）
       if (inGracePeriod) {
@@ -849,7 +835,7 @@ comfyui_portable:
       const isNetworkTimeout = errorMessage.includes('121') ||  // WinError 121: 信号灯超时
                                errorMessage.includes('ETIMEDOUT') ||  // 网络连接超时
                                errorMessage.includes('ECONNREFUSED');  // 连接被拒绝
-      const isAbortTimeout = error?.name === 'AbortError';  // 健康检查超时
+      const isAbortTimeout = error.name === 'AbortError';  // 健康检查超时
 
       // 网络超时：不累计失败（外部服务问题，非 ComfyUI 本身）
       if (isNetworkTimeout) {
@@ -931,11 +917,7 @@ comfyui_portable:
         await this.stop();
       }
 
-      // 清理数据库锁文件
-      const comfyuiPath = configManager.get('comfyuiPath');
-      if (comfyuiPath) {
-        await this._cleanDatabaseLockFiles(comfyuiPath);
-      }
+      await this._preparePortAndLocks();
 
       // 等待端口释放
       await new Promise(resolve => setTimeout(resolve, 1500));
@@ -967,21 +949,11 @@ comfyui_portable:
     const port = _port;
 
     // 安全解码：优先 UTF-8，失败时回退到 latin1
-    const safeDecode = (data: Buffer): string => {
-      try {
-        return data.toString('utf8');
-      } catch {
-        return data.toString('latin1');
-      }
-    };
-
     // 统一的行处理回调：解析 → 写日志 → 检测服务器就绪
     const handleLine = (line: string): void => {
       const entry = parseLogLine(line);
       logger.log(entry.message, entry.level);
 
-      // 检测ComfyUI完全启动的日志标志
-      // ComfyUI启动完成后会输出 "To see the GUI go to: http://127.0.0.1:8188"
       if (!this._serverReadyFired && entry.message.includes('To see the GUI go to:')) {
         this._serverReadyFired = true;
         logger.info('检测到ComfyUI服务器完全启动（日志标志）');
@@ -999,11 +971,11 @@ comfyui_portable:
     const stderrBuffer = new LineBuffer(handleLine);
 
     this._process.stdout?.on('data', (data: Buffer) => {
-      stdoutBuffer.push(safeDecode(data));
+      stdoutBuffer.push(safeBufferDecode(data));
     });
 
     this._process.stderr?.on('data', (data: Buffer) => {
-      stderrBuffer.push(safeDecode(data));
+      stderrBuffer.push(safeBufferDecode(data));
     });
 
     // 进程退出
@@ -1109,7 +1081,7 @@ comfyui_portable:
   }
 
   // 停止进程 - 优化响应速度
-  public stop(): Promise<void> {
+  public stop(skipManualStop: boolean = false): Promise<void> {
     // 停止健康检查
     this._stopHealthCheck();
 
@@ -1130,7 +1102,9 @@ comfyui_portable:
 
     const previousStatus = stateManager.status;
     stateManager.status = Status.STOPPING;
-    stateManager.setManualStop(true);
+    if (!skipManualStop) {
+      stateManager.setManualStop(true);
+    }
     this._notifyStatusChange();
 
     // 如果是在启动过程中停止，记录日志
@@ -1151,7 +1125,9 @@ comfyui_portable:
         isKilled = true;
         this._process = null;
         stateManager.status = Status.STOPPED;
-        stateManager.setManualStop(false);
+        if (!skipManualStop) {
+          stateManager.setManualStop(false);
+        }
         // 用户手动停止时重置重启计数器，允许后续手动启动
         stateManager.resetRestartAttempts();
         this._notifyStatusChange();
@@ -1205,8 +1181,8 @@ comfyui_portable:
           cleanup();
         });
       } catch (err) {
-        const error = err as Error | null;
-        const errorMessage = error?.message ?? '未知错误';
+        const error = toError(err);
+        const errorMessage = error.message;
         logger.error(`停止异常：${errorMessage}`);
         // 最后的强制清理
         if (pid !== undefined) {
@@ -1250,7 +1226,7 @@ comfyui_portable:
           }
           break;
         } catch (err) {
-          const error = err as Error;
+          const error = toError(err);
           if (attempt < MAX_RETRIES - 1) {
             logger.warn(`清理锁文件 ${path.basename(lockFile)} 失败（第${attempt + 1}次），重试中...`);
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
@@ -1259,6 +1235,24 @@ comfyui_portable:
           }
         }
       }
+    }
+  }
+
+  // 准备启动：清理端口占用和数据库锁文件（start/restart 共用）
+  private async _preparePortAndLocks(): Promise<void> {
+    const serverConfig = configManager.server;
+    const targetPort = serverConfig.port ?? 8188;
+    logger.info(`检查端口 ${targetPort} 是否可用...`);
+    const cleanResult = await environmentChecker.checkAndCleanPort(targetPort);
+    if (cleanResult.cleaned) {
+      logger.info(`已清理占用端口 ${targetPort} 的进程: PID ${cleanResult.pids.join(', ')}`);
+    } else if (cleanResult.error) {
+      logger.warn(`端口 ${targetPort} 清理失败: ${cleanResult.error}，将尝试使用其他端口`);
+    }
+
+    const comfyuiPath = configManager.get('comfyuiPath');
+    if (comfyuiPath) {
+      await this._cleanDatabaseLockFiles(comfyuiPath);
     }
   }
 
@@ -1286,41 +1280,23 @@ comfyui_portable:
       // 如果进程正在运行或启动中，先停止（等待进程真正退出）
       if (isRunning && this._process && !this._process.killed) {
         logger.info(`重启 ComfyUI：当前状态为 ${currentStatus}，先停止进程 PID: ${this._process.pid}`);
-        await this.stop();
+        await this.stop(true);
         logger.info('重启：旧进程已完全停止');
 
         // 等待端口释放（进程退出后端口可能还在 TIME_WAIT 状态）
         logger.info('等待端口释放...');
         await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // 清理数据库锁文件
-        const comfyuiPath = configManager.get('comfyuiPath');
-        if (comfyuiPath) {
-          await this._cleanDatabaseLockFiles(comfyuiPath);
-        }
       } else if (!this._process || this._process.killed) {
         logger.info('重启 ComfyUI：没有运行中的进程，直接启动');
       } else {
         logger.info(`重启 ComfyUI：当前状态为 ${currentStatus}，直接启动`);
       }
 
-      // 重启时也检查并清理端口占用
-      const serverConfig = configManager.server;
-      const targetPort = serverConfig.port ?? 8188;
-      logger.info(`重启前检查端口 ${targetPort} 是否可用...`);
-      const cleanResult = await environmentChecker.checkAndCleanPort(targetPort);
-      if (cleanResult.cleaned) {
-        logger.info(`已清理占用端口 ${targetPort} 的进程: PID ${cleanResult.pids.join(', ')}`);
-        // 清理后额外等待端口释放
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      } else if (cleanResult.error) {
-        logger.warn(`端口 ${targetPort} 清理失败: ${cleanResult.error}，将尝试使用其他端口`);
-      }
-
-      // 启动新进程
+      // 启动新进程（start 内部会调用 _preparePortAndLocks）
       await this.start();
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`重启 ComfyUI 失败: ${error.message}`);
       stateManager.status = Status.FAILED;
       this._notifyStatusChange();

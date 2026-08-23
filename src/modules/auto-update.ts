@@ -13,6 +13,7 @@ import { BrowserWindow, dialog } from 'electron';
 import { autoUpdater, UpdateInfo, ProgressInfo } from 'electron-updater';
 
 import { logger } from './logger';
+import { toError } from './utils';
 
 export class AutoUpdateManager {
   private _initialized = false;
@@ -80,7 +81,7 @@ export class AutoUpdateManager {
     try {
       await autoUpdater.checkForUpdates();
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.warn(`自动更新检查失败: ${error.message}`);
     }
   }
@@ -90,7 +91,7 @@ export class AutoUpdateManager {
     try {
       await autoUpdater.downloadUpdate();
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.warn(`自动更新下载失败: ${error.message}`);
     }
   }

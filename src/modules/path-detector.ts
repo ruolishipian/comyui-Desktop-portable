@@ -57,3 +57,55 @@ export function detectPythonPath(appPath: string): string | null {
 
   return null;
 }
+
+/**
+ * 统一环境检测结果
+ */
+export interface EnvironmentDetectionResult {
+  comfyuiPath: string | null;
+  pythonPath: string | null;
+}
+
+/**
+ * 统一检测 ComfyUI 和 Python 路径
+ * 供 ConfigManager.isEnvironmentConfigured 和 EnvironmentChecker 共用
+ * @param appPath 应用根目录
+ * @param comfyuiParentDir 可选的 ComfyUI 父目录（用于在其下查找 python_embeded）
+ */
+export function detectEnvironment(
+  appPath: string,
+  comfyuiParentDir?: string
+): EnvironmentDetectionResult {
+  const comfyuiPath = detectComfyUIPath(appPath);
+
+  // Python 检测：优先在 ComfyUI 父目录下查找
+  const pythonSearchDirs: string[] = [];
+  if (comfyuiPath) {
+    const parent = path.dirname(comfyuiPath);
+    pythonSearchDirs.push(parent);
+  }
+  if (comfyuiParentDir && comfyuiParentDir !== path.dirname(comfyuiPath ?? '')) {
+    pythonSearchDirs.push(comfyuiParentDir);
+  }
+  pythonSearchDirs.push(appPath);
+
+  let pythonPath: string | null = null;
+  for (const dir of pythonSearchDirs) {
+    const candidates = [
+      path.join(dir, 'python_embeded', 'python.exe'),
+      path.join(dir, 'python', 'python.exe'),
+      path.join(dir, 'python_embeded', 'bin', 'python3'),
+      path.join(dir, 'python', 'bin', 'python3'),
+      path.join(dir, 'python', 'bin', 'python')
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        pythonPath = candidate;
+        break;
+      }
+    }
+    if (pythonPath) break;
+  }
+
+  return { comfyuiPath, pythonPath };
+}

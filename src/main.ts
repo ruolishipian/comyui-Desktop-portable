@@ -22,10 +22,11 @@ import {
   proxyManager,
   handleError
 } from './modules';
+import { getAppPath } from './modules/app-path';
 import { autoUpdateManager } from './modules/auto-update';
 import { httpProxyServer } from './modules/http-proxy';
-
 import { terminalManager } from './modules/terminal';
+import { debugLog, toError } from './modules/utils';
 import { StateData } from './types';
 
 // ========== Chrome 环境模拟配置 ==========
@@ -60,11 +61,10 @@ global.isQuiting = false;
  */
 function setupElectronCache(): void {
   // 获取应用根目录（可执行文件所在目录）
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { getAppPath } = require('./modules/app-path') as { getAppPath: () => string };
+
   const appPath = getAppPath();
 
-  console.log('[Main] 应用根目录:', appPath);
+  debugLog('[Main] 应用根目录:', appPath);
 
   const userDataPath = path.join(appPath, 'data');
   const cachePath = path.join(userDataPath, 'cache');
@@ -81,7 +81,7 @@ function setupElectronCache(): void {
     fs.mkdirSync(gpuCachePath, { recursive: true });
   }
 
-  console.log('[Main] 缓存目录:', userDataPath);
+  debugLog('[Main] 缓存目录:', userDataPath);
 
   // 设置 app 路径
   try {
@@ -207,7 +207,7 @@ function handleStatusChange(data: StateData): void {
  * 处理窗口事件
  */
 function handleWindowEvent(event: string, windowType: WindowType | null): void {
-  console.log(`[Debug] Window event: ${event}, type: ${windowType}`);
+  debugLog(`[Debug] Window event: ${event}, type: ${windowType}`);
   switch (event) {
     case 'ready':
       if (windowType === 'main') {
@@ -215,17 +215,17 @@ function handleWindowEvent(event: string, windowType: WindowType | null): void {
         // 注意：需要检查当前状态，防止在启动过程中重复启动
         const autoStart = configManager.server.autoStart ?? false;
         const currentStatus = stateManager.status;
-        console.log('[Debug] autoStart:', autoStart, 'currentStatus:', currentStatus);
+        debugLog('[Debug] autoStart:', autoStart, 'currentStatus:', currentStatus);
 
         // 只有在 stopped 状态下才自动启动
         // 注意：failed 状态不应该自动启动，否则会形成无限重启循环
         if (autoStart && currentStatus === 'stopped') {
-          console.log('[Debug] Calling processManager.start()');
+          debugLog('[Debug] Calling processManager.start()');
           void processManager.start();
         } else if (autoStart && currentStatus === 'failed') {
-          console.log('[Debug] Skipped auto-start due to failed status (prevents infinite restart loop)');
+          debugLog('[Debug] Skipped auto-start due to failed status (prevents infinite restart loop)');
         } else if (autoStart) {
-          console.log('[Debug] Skipped auto-start, current status:', currentStatus);
+          debugLog('[Debug] Skipped auto-start, current status:', currentStatus);
         }
       }
       break;
@@ -275,7 +275,7 @@ function setupSingleInstance(): void {
         buttons: ['确定']
       })
       .catch((err: unknown) => {
-        const error = err as Error;
+        const error = toError(err);
         logger.error(`显示对话框失败: ${error.message}`);
       });
   });
@@ -299,7 +299,7 @@ void app
       await httpProxyServer.start(0);
       logger.info(`HTTP 代理服务器已启动: ${httpProxyServer.url}`);
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`HTTP 代理服务器启动失败: ${error.message}`);
       dialog.showErrorBox('启动失败', `代理服务器启动失败：${error.message}\n请重启应用`);
       app.exit(2021);
@@ -317,17 +317,17 @@ void app
       await windowManager.clearBrowserCache();
       logger.info('启动时已清除浏览器缓存');
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`清除浏览器缓存失败: ${error.message}`);
     }
 
     // 调试：输出配置路径
-    console.log('[Debug] comfyuiPath:', configManager.get('comfyuiPath'));
-    console.log('[Debug] pythonPath:', configManager.get('pythonPath'));
+    debugLog('[Debug] comfyuiPath:', configManager.get('comfyuiPath'));
+    debugLog('[Debug] pythonPath:', configManager.get('pythonPath'));
 
     // 根据配置状态创建窗口
     const isConfigured = configManager.isEnvironmentConfigured();
-    console.log('[Debug] isEnvironmentConfigured:', isConfigured);
+    debugLog('[Debug] isEnvironmentConfigured:', isConfigured);
 
     if (isConfigured) {
       windowManager.createMainWindow();
@@ -345,7 +345,7 @@ void app
 // 应用即将退出 - 优化退出速度
 let isQuittingInProgress = false;
 app.on('before-quit', event => {
-  console.log('[Debug] before-quit event triggered, isQuiting:', global.isQuiting);
+  debugLog('[Debug] before-quit event triggered, isQuiting:', global.isQuiting);
 
   // 防止重入：如果已经在退出流程中，直接返回
   if (isQuittingInProgress) {
@@ -362,7 +362,7 @@ app.on('before-quit', event => {
     event.preventDefault();
     global.isQuiting = true;
 
-    console.log('[Debug] ComfyUI is running, stopping...');
+    debugLog('[Debug] ComfyUI is running, stopping...');
     logger.info('正在关闭 ComfyUI...');
 
     // 1. 通知前端应用即将关闭

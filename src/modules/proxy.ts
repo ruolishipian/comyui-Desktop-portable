@@ -6,6 +6,9 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
+import { logger } from './logger';
+import { toError } from './utils';
+
 // 在测试环境中使用空函数
 const execAsync = process.env.NODE_ENV === 'test' ? () => Promise.resolve({ stdout: '', stderr: '' }) : promisify(exec);
 
@@ -44,7 +47,7 @@ export class ProxyManager {
       logger.info('当前平台不支持自动代理检测');
       return { enabled: false };
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`检测系统代理失败: ${error.message}`);
       return { enabled: false };
     }
@@ -168,7 +171,7 @@ export class ProxyManager {
       logger.info('未检测到 Windows 系统代理');
       return { enabled: false };
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`检测 Windows 代理失败: ${error.message}`);
       return { enabled: false };
     }
@@ -225,7 +228,7 @@ export class ProxyManager {
       logger.info('未检测到 macOS 系统代理');
       return { enabled: false };
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`检测 macOS 代理失败: ${error.message}`);
       return { enabled: false };
     }
@@ -256,7 +259,7 @@ export class ProxyManager {
       logger.info('未检测到 Linux 系统代理');
       return { enabled: false };
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`检测 Linux 代理失败: ${error.message}`);
       return { enabled: false };
     }
@@ -303,5 +306,3 @@ export class ProxyManager {
 // 导出单例
 export const proxyManager = new ProxyManager();
 
-// 导入 logger(避免循环依赖)
-import { logger } from './logger';

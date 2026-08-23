@@ -11,9 +11,12 @@ import { promisify } from 'util';
 
 import { CheckType, EnvironmentCheck } from '../types';
 
+import { getAppPath } from './app-path';
 import { configManager } from './config';
 import { logger } from './logger';
+import { detectComfyUIPath } from './path-detector';
 import { findPythonPath } from './path-utils';
+import { toError } from './utils';
 
 const execAsync = promisify(exec);
 
@@ -43,13 +46,7 @@ export class EnvironmentChecker {
 
     // 便携包模式：自动检测便携包内的 ComfyUI
     if (!comfyuiPath) {
-      // 尝试自动检测便携包内的 ComfyUI 目录
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { getAppPath } = require('./app-path') as { getAppPath: () => string };
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { detectComfyUIPath } = require('./path-detector') as {
-        detectComfyUIPath: (appPath: string) => string | null;
-      };
+
       const appPath = getAppPath();
       const detectedPath = detectComfyUIPath(appPath);
 
@@ -97,27 +94,13 @@ export class EnvironmentChecker {
   // 检查 Python 路径
   private _checkPythonPath(): void {
     const pythonPath = configManager.get('pythonPath');
-    const comfyuiPath = configManager.get('comfyuiPath');
+
 
     // 便携包模式：自动检测便携包内的 Python
     if (!pythonPath) {
-      // 尝试自动检测便携包内的 Python
       const appPath = process.cwd();
-      const possiblePaths: string[] = [];
 
-      // 如果有 ComfyUI 路径,优先检测其父目录下的 python_embeded
-      if (comfyuiPath) {
-        const comfyuiParent = path.dirname(comfyuiPath);
-        possiblePaths.push(
-          path.join(comfyuiParent, 'python_embeded', 'python.exe'),
-          path.join(comfyuiParent, 'python', 'python.exe'),
-          // Linux/macOS
-          path.join(comfyuiParent, 'python_embeded', 'bin', 'python3'),
-          path.join(comfyuiParent, 'python', 'bin', 'python3')
-        );
-      }
-
-      // 使用共享函数查找 Python 路径
+      // 使用共享函数查找 Python 路径（内部已处理 ComfyUI 父目录检测）
       const detectedPythonPath = findPythonPath(appPath);
       if (detectedPythonPath) {
         // 自动设置 Python 路径
@@ -260,7 +243,7 @@ export class EnvironmentChecker {
         error: failedPids.length > 0 ? `无法终止进程: ${failedPids.join(', ')}` : '未知错误'
       };
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`清理端口 ${port} 时发生错误: ${error.message}`);
       return { cleaned: false, pids: [], error: error.message };
     }
@@ -324,7 +307,7 @@ export class EnvironmentChecker {
         }
       }
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`查找端口 ${port} 占用进程失败: ${error.message}`);
     }
 
@@ -362,7 +345,7 @@ export class EnvironmentChecker {
       }
       return true;
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`终止进程 PID ${pid} 失败: ${error.message}`);
       return false;
     }
@@ -375,7 +358,7 @@ export class EnvironmentChecker {
       await fs.promises.writeFile(testFile, 'test');
       await fs.promises.unlink(testFile);
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       this._checks.push({
         type: 'error' as CheckType,
         msg: `配置目录无写入权限：${error.message}`

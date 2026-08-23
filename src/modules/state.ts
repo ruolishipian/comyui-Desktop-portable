@@ -245,13 +245,15 @@ export class StateManager {
   // 通知所有监听器
   private _notifyListeners(): void {
     const data = this.getStateData();
-    this._listeners.forEach(callback => {
+    // 浅拷贝防止遍历过程中 listener 增删导致迭代异常
+    const listeners = Array.from(this._listeners);
+    for (const callback of listeners) {
       try {
         callback(data);
       } catch (err) {
         console.error('[StateManager] 监听器执行错误:', err);
       }
-    });
+    }
   }
 
   // 重置所有状态

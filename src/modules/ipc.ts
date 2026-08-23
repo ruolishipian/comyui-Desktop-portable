@@ -14,6 +14,7 @@ import { ProcessManager } from './process';
 import { stateManager } from './state';
 import { TerminalManager } from './terminal';
 import { TrayManager } from './tray';
+import { toError } from './utils';
 import { WindowManager } from './windows';
 
 const UPDATE_CONFIG_ALLOWED_KEYS: ReadonlySet<string> = new Set([
@@ -210,8 +211,8 @@ export class IPCManager {
     typedHandle(IPC_CHANNELS.RESTART_COMFYUI, () => {
       if (this._processManager) {
         this._processManager.restart().catch((err: unknown) => {
-          const error = err as Error | null;
-          logger.error(`IPC 重启 ComfyUI 失败: ${error?.message ?? '未知错误'}`);
+          const error = toError(err);
+          logger.error(`IPC 重启 ComfyUI 失败: ${error.message}`);
         });
       }
     });

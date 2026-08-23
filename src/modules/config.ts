@@ -11,7 +11,8 @@ import Store from 'electron-store';
 import type { AppConfig, ServerConfig, LogsConfig, TrayConfig, AdvancedConfig, WindowConfig } from '../types';
 
 import { getAppPath } from './app-path';
-import { findPythonPath } from './path-utils';
+import { detectEnvironment } from './path-detector';
+import { debugLog } from './utils';
 
 // 默认配置（空配置，所有值从环境变量或设置界面获取）
 export const DEFAULT_CONFIG: AppConfig = {};
@@ -23,6 +24,18 @@ export class ConfigManager {
   private _store: Store<AppConfig> | null = null;
   private _initialized: boolean = false;
 
+  // getter 缓存 + 独立脏标记
+  private _serverCache: ServerConfig | null = null;
+  private _logsCache: LogsConfig | null = null;
+  private _trayCache: TrayConfig | null = null;
+  private _windowCache: WindowConfig | null = null;
+  private _advancedCache: AdvancedConfig | null = null;
+  private _serverCacheDirty: boolean = true;
+  private _logsCacheDirty: boolean = true;
+  private _trayCacheDirty: boolean = true;
+  private _windowCacheDirty: boolean = true;
+  private _advancedCacheDirty: boolean = true;
+
   // 初始化配置（必须在 app ready 后调用）
   public init(): void {
     if (this._initialized) return;
@@ -30,7 +43,7 @@ export class ConfigManager {
     // 获取应用根目录（可执行文件所在目录）
     const appPath = getAppPath();
 
-    console.log('[Config] 应用根目录:', appPath);
+    debugLog('[Config] 应用根目录:', appPath);
 
     this._configDir = path.join(appPath, 'config');
     this._logsDir = path.join(appPath, 'logs');
@@ -39,8 +52,8 @@ export class ConfigManager {
     this._ensureDir(this._configDir);
     this._ensureDir(this._logsDir);
 
-    console.log('[Config] 配置目录:', this._configDir);
-    console.log('[Config] 日志目录:', this._logsDir);
+    debugLog('[Config] 配置目录:', this._configDir);
+    debugLog('[Config] 日志目录:', this._logsDir);
 
     // 初始化存储
     this._store = new Store<AppConfig>({
@@ -131,6 +144,12 @@ export class ConfigManager {
     // 由于 key 是动态的，我们需要使用类型断言
     // 但这比 any 更安全，因为类型声明扩展提供了类型检查
     store.set(key as keyof AppConfig, value as AppConfig[keyof AppConfig]);
+    // 标记所有缓存为脏
+    this._serverCacheDirty = true;
+    this._logsCacheDirty = true;
+    this._trayCacheDirty = true;
+    this._windowCacheDirty = true;
+    this._advancedCacheDirty = true;
   }
 
   // 获取所有配置
@@ -153,10 +172,11 @@ export class ConfigManager {
     this._store.clear();
   }
 
-  // 获取服务器配置（从环境变量或配置文件读取）
+  // 获取服务器配置（从环境变量或配置文件读取，带缓存）
   public get server(): ServerConfig {
+    if (!this._serverCacheDirty && this._serverCache) return this._serverCache;
     const config = this.get('server') ?? {};
-    return {
+    this._serverCache = {
       port: this._getEnvNumber('COMFYUI_PORT', config.port),
       autoStart: this._getEnvBoolean('COMFYUI_AUTO_START', config.autoStart),
       autoRestart: this._getEnvBoolean('COMFYUI_AUTO_RESTART', config.autoRestart),
@@ -176,47 +196,61 @@ export class ConfigManager {
         disableIpexOptimize: this._getEnvString('COMFYUI_ARG_DISABLE_IPEX', config.argNames?.disableIpexOptimize)
       }
     };
+    this._serverCacheDirty = false;
+    return this._serverCache;
   }
 
-  // 获取日志配置（从环境变量或配置文件读取）
+  // 获取日志配置（从环境变量或配置文件读取，带缓存）
   public get logs(): LogsConfig {
+    if (!this._logsCacheDirty && this._logsCache) return this._logsCache;
     const config = this.get('logs') ?? {};
-    return {
+    this._logsCache = {
       enable: this._getEnvBoolean('COMFYUI_LOG_ENABLE', config.enable ?? true), // 默认启用
       level: this._getEnvString('COMFYUI_LOG_LEVEL', config.level) as 'error' | 'warn' | 'info',
       maxSize: this._getEnvNumber('COMFYUI_LOG_MAX_SIZE', config.maxSize),
       keepDays: this._getEnvNumber('COMFYUI_LOG_KEEP_DAYS', config.keepDays),
       realtime: this._getEnvBoolean('COMFYUI_LOG_REALTIME', config.realtime ?? true) // 默认启用实时日志
     };
+    this._logsCacheDirty = false;
+    return this._logsCache;
   }
 
-  // 获取高级配置（从环境变量或配置文件读取）
+  // 获取高级配置（从环境变量或配置文件读取，带缓存）
   public get advanced(): AdvancedConfig {
+    if (!this._advancedCacheDirty && this._advancedCache) return this._advancedCache;
     const config = this.get('advanced') ?? {};
-    return {
+    this._advancedCache = {
       singleInstance: this._getEnvBoolean('COMFYUI_SINGLE_INSTANCE', config.singleInstance ?? true), // 默认启用单实例
       stdoutThrottle: this._getEnvNumber('COMFYUI_STDOUT_THROTTLE', config.stdoutThrottle)
     };
+    this._advancedCacheDirty = false;
+    return this._advancedCache;
   }
 
-  // 获取托盘配置（从环境变量或配置文件读取）
+  // 获取托盘配置（从环境变量或配置文件读取，带缓存）
   public get tray(): TrayConfig {
+    if (!this._trayCacheDirty && this._trayCache) return this._trayCache;
     const config = this.get('tray') ?? {};
-    return {
+    this._trayCache = {
       minimizeToTray: this._getEnvBoolean('COMFYUI_MINIMIZE_TO_TRAY', config.minimizeToTray)
     };
+    this._trayCacheDirty = false;
+    return this._trayCache;
   }
 
-  // 获取窗口配置（从环境变量或配置文件读取）
+  // 获取窗口配置（从环境变量或配置文件读取，带缓存）
   public get window(): WindowConfig {
+    if (!this._windowCacheDirty && this._windowCache) return this._windowCache;
     const config = this.get('window') ?? {};
-    return {
+    this._windowCache = {
       width: this._getEnvNumber('COMFYUI_WINDOW_WIDTH', config.width),
       height: this._getEnvNumber('COMFYUI_WINDOW_HEIGHT', config.height),
       x: this._getEnvNumber('COMFYUI_WINDOW_X', config.x),
       y: this._getEnvNumber('COMFYUI_WINDOW_Y', config.y),
       maximized: this._getEnvBoolean('COMFYUI_WINDOW_MAXIMIZED', config.maximized)
     };
+    this._windowCacheDirty = false;
+    return this._windowCache;
   }
 
   // 从环境变量获取字符串值
@@ -256,69 +290,42 @@ export class ConfigManager {
 
     // 便携包模式：尝试自动检测路径
     if (comfyuiPath === undefined || comfyuiPath === '' || pythonPath === undefined || pythonPath === '') {
-      // 尝试自动检测便携包内的路径
       const appPath = process.cwd();
+      const { comfyuiPath: detectedComfyui, pythonPath: detectedPython } = detectEnvironment(appPath);
 
-      // 检测 ComfyUI
-      if (comfyuiPath === undefined || comfyuiPath === '') {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { detectComfyUIPath } = require('./path-detector') as {
-          detectComfyUIPath: (appPath: string) => string | null;
-        };
-        const detectedPath = detectComfyUIPath(appPath);
-        if (detectedPath) {
-          this.set('comfyuiPath', detectedPath);
-          console.log(`[Config] 自动检测到 ComfyUI: ${detectedPath}`);
-        }
+      if (!comfyuiPath && detectedComfyui) {
+        this.set('comfyuiPath', detectedComfyui);
+        debugLog(`[Config] 自动检测到 ComfyUI: ${detectedComfyui}`);
       }
 
-      // 检测 Python
-      if (!pythonPath) {
-        const newComfyuiPath = this.get('comfyuiPath');
-        const possiblePythonPaths: string[] = [];
-
-        // 如果有 ComfyUI 路径,优先检测其父目录下的 python_embeded
-        if (newComfyuiPath) {
-          const comfyuiParent = path.dirname(newComfyuiPath);
-          possiblePythonPaths.push(
-            path.join(comfyuiParent, 'python_embeded', 'python.exe'),
-            path.join(comfyuiParent, 'python', 'python.exe')
-          );
-        }
-
-        // 使用共享函数查找 Python 路径
-        const detectedPythonPath = findPythonPath(appPath);
-        if (detectedPythonPath) {
-          this.set('pythonPath', detectedPythonPath);
-          console.log(`[Config] 自动检测到 Python: ${detectedPythonPath}`);
-        }
+      if (!pythonPath && detectedPython) {
+        this.set('pythonPath', detectedPython);
+        debugLog(`[Config] 自动检测到 Python: ${detectedPython}`);
       }
 
-      // 重新获取路径
       const newComfyuiPath = this.get('comfyuiPath');
       const newPythonPath = this.get('pythonPath');
 
       if (!newComfyuiPath || !newPythonPath) {
-        console.log('[Config] 未找到 ComfyUI 或 Python 路径');
+        debugLog('[Config] 未找到 ComfyUI 或 Python 路径');
         return false;
       }
     }
 
-    // 验证 ComfyUI 路径是否存在
+    // 验证路径是否存在
     const finalComfyuiPath = this.get('comfyuiPath');
     if (finalComfyuiPath && !fsSync.existsSync(finalComfyuiPath)) {
-      console.log(`[Config] ComfyUI 路径不存在: ${finalComfyuiPath}`);
+      debugLog(`[Config] ComfyUI 路径不存在: ${finalComfyuiPath}`);
       return false;
     }
 
-    // 验证 Python 可执行文件是否存在
     const finalPythonPath = this.get('pythonPath');
     if (finalPythonPath && !fsSync.existsSync(finalPythonPath)) {
-      console.log(`[Config] Python 路径不存在: ${finalPythonPath}`);
+      debugLog(`[Config] Python 路径不存在: ${finalPythonPath}`);
       return false;
     }
 
-    console.log('[Config] 环境检查通过');
+    debugLog('[Config] 环境检查通过');
     return true;
   }
 

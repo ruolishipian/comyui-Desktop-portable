@@ -8,7 +8,7 @@ import fsSync from 'fs';
 import { Tray, Menu, app } from 'electron';
 
 import { logger } from './logger';
-import { createFileOperationMenuItems } from './menu-utils';
+import { createComfyUIControlMenuItems, createCommonNavMenuItems, createFileOperationMenuItems, createResetConfigMenuItem, createQuitMenuItem } from './menu-utils';
 import { PATHS } from './paths';
 import { ProcessManager } from './process';
 import { stateManager } from './state';
@@ -89,61 +89,15 @@ export class TrayManager {
     if (!this._tray) return;
 
     const status = stateManager.status;
+    const context = {
+      windowManager: this._windowManager,
+      processManager: this._processManager,
+      terminalManager: this._terminalManager
+    };
+
     const menu = Menu.buildFromTemplate([
-      {
-        label: status === 'running' ? '停止 ComfyUI' : '启动 ComfyUI',
-        click: () => {
-          if (this._processManager !== null) {
-            if (status === 'running') {
-              void this._processManager.stop();
-            } else {
-              void this._processManager.start();
-            }
-          }
-        }
-      },
-      {
-        label: '重启 ComfyUI',
-        click: () => {
-          if (this._processManager !== null) {
-            void this._processManager.restart();
-          }
-        }
-        // 重启功能在任何时候都可用
-      },
-      { type: 'separator' },
-      {
-        label: '查看实时日志',
-        click: () => {
-          if (this._windowManager) {
-            this._windowManager.createLogWindow();
-          }
-        }
-      },
-      {
-        label: '打开终端',
-        click: () => {
-          if (this._terminalManager) {
-            this._terminalManager.createTerminalWindow();
-          }
-        }
-      },
-      {
-        label: '设置',
-        click: () => {
-          if (this._windowManager) {
-            this._windowManager.createSettingsWindow();
-          }
-        }
-      },
-      {
-        label: '重新选择环境',
-        click: () => {
-          if (this._windowManager) {
-            this._windowManager.createEnvSelectWindow();
-          }
-        }
-      },
+      ...createComfyUIControlMenuItems(context as Parameters<typeof createComfyUIControlMenuItems>[0]),
+      ...createCommonNavMenuItems(context as Parameters<typeof createCommonNavMenuItems>[0]),
       ...createFileOperationMenuItems(),
       {
         label: '显示窗口',
@@ -153,33 +107,15 @@ export class TrayManager {
           }
         }
       },
-      {
-        label: '重置所有配置',
-        click: () => {
-          if (this._windowManager !== null) {
-            void this._windowManager.resetConfig();
-          }
-        }
-      },
+      createResetConfigMenuItem(context as Parameters<typeof createResetConfigMenuItem>[0]),
       { type: 'separator' },
-      {
-        label: '退出',
-        click: () => {
-          this._quit();
-        }
-      }
+      createQuitMenuItem()
     ]);
 
     this._tray.setContextMenu(menu);
     this._tray.setToolTip(`ComfyUI - ${status.toUpperCase()}`);
   }
 
-  // 退出应用
-  private _quit(): void {
-    global.isQuiting = true;
-    // 直接退出，before-quit 事件会处理进程停止
-    app.quit();
-  }
 
   // 销毁托盘
   public destroy(): void {

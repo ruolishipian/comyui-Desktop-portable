@@ -23,6 +23,7 @@ import { Duplex } from 'stream';
 
 import { logger } from './logger';
 import { getAssetsPath } from './paths';
+import { isPathTraversal, safeDecodeUri, toError } from './utils';
 
 const SHELL_ROUTES: Record<string, string> = {
   '/shell/loading': 'loading.html',
@@ -81,7 +82,7 @@ export class HttpProxyServer {
         try {
           this._handleRequest(req, res);
         } catch (err) {
-          const error = err as Error;
+          const error = toError(err);
           logger.error(`HTTP 代理请求处理失败: ${error.message}`);
           if (!res.headersSent) {
             res.writeHead(502, { 'Content-Type': 'text/plain' });
@@ -136,7 +137,7 @@ export class HttpProxyServer {
         this._shimScript = '';
       }
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.warn(`加载垫片脚本失败: ${error.message}`);
       this._shimScript = '';
     }
@@ -154,15 +155,20 @@ export class HttpProxyServer {
 
     // 2. 壳子静态资源
     if (urlPath.startsWith('/shell/assets/')) {
-      const relativePath = urlPath.slice('/shell/assets/'.length);
+      const relativePath = safeDecodeUri(urlPath.slice('/shell/assets/'.length));
+      if (isPathTraversal(relativePath)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('Forbidden');
+        return;
+      }
       this._serveStaticFile(relativePath, res);
       return;
     }
 
     // 3. 壳子根路径资源（CSS、图标等，兼容直接引用）
     if (urlPath.startsWith('/shell/')) {
-      const relativePath = urlPath.slice('/shell/'.length);
-      if (relativePath && !relativePath.includes('..')) {
+      const relativePath = safeDecodeUri(urlPath.slice('/shell/'.length));
+      if (relativePath && !isPathTraversal(relativePath)) {
         this._serveStaticFile(relativePath, res);
         return;
       }
@@ -200,7 +206,7 @@ export class HttpProxyServer {
       });
       res.end(content);
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`提供壳子页面失败 ${filename}: ${error.message}`);
       res.writeHead(500, { 'Content-Type': 'text/plain' });
       res.end('Internal Server Error');
@@ -217,7 +223,7 @@ export class HttpProxyServer {
   }
 
   private _serveStaticFile(relativePath: string, res: http.ServerResponse): void {
-    if (relativePath.includes('..')) {
+    if (isPathTraversal(relativePath)) {
       res.writeHead(403, { 'Content-Type': 'text/plain' });
       res.end('Forbidden');
       return;
@@ -246,7 +252,7 @@ export class HttpProxyServer {
       });
       res.end(content);
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`提供静态文件失败 ${relativePath}: ${error.message}`);
       res.writeHead(500, { 'Content-Type': 'text/plain' });
       res.end('Internal Server Error');

@@ -17,6 +17,7 @@ import { configManager } from './config';
 import { httpProxyServer } from './http-proxy';
 import { logger } from './logger';
 import { PATHS } from './paths';
+import { toError } from './utils';
 
 interface TerminalSession {
   pty: IPty;
@@ -105,7 +106,7 @@ export class TerminalManager {
 
       return sessionId;
     } catch (err) {
-      const error = err as Error;
+      const error = toError(err);
       logger.error(`创建终端会话失败: ${error.message}`);
       return null;
     }
